@@ -1,0 +1,28 @@
+# Node modules
+**/node_modules/
+**/node_modules - Copy/
+
+# Python dependencies
+**/venv/
+**/.venv/
+**/env/
+**/__pycache__/
+*.pyc
+**/.pytest_cache/
+
+# Environment variables
+.env
+
+# Build artifacts
+dist/
+build/
+.next/
+out/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
