@@ -1,11 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { FaMoon, FaSun } from 'react-icons/fa';
 
 function Login() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [message, setMessage] = useState('');
+    const [theme, setTheme] = useState('light');
     const navigate = useNavigate();
+
+    // Load theme from localStorage on mount
+    useEffect(() => {
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        setTheme(savedTheme);
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    }, []);
+
+    // Toggle theme
+    const toggleTheme = () => {
+        const newTheme = theme === 'light' ? 'dark' : 'light';
+        setTheme(newTheme);
+        localStorage.setItem('theme', newTheme);
+
+        if (newTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    };
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -32,55 +58,73 @@ function Login() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#1e1b4b] to-[#4f2e81] p-4">
-            <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 shadow-2xl transform transition hover:-translate-y-1 hover:shadow-3xl">
-                <div className="text-center mb-10">
-                    <h2 className="text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400 mb-2">
-                        Welcome Back
-                    </h2>
-                    <p className="text-gray-300">Sign in to continue your journey</p>
+        <div className={`min-h-screen flex items-center justify-center p-4 relative overflow-hidden transition-colors duration-500 ${theme === 'dark' ? 'bg-brand-dark text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+            {/* Theme Toggle Button */}
+            <button
+                onClick={toggleTheme}
+                className={`fixed top-8 right-8 z-50 flex items-center gap-2 px-6 py-3 rounded-2xl transition-all text-xs font-black uppercase tracking-widest border lumina-glass ${theme === 'dark' ? 'bg-white/5 hover:bg-white/10 text-brand-primary border-white/5' : 'bg-white/80 hover:bg-slate-100 text-brand-dark border-slate-200'}`}
+            >
+                {theme === 'light' ? <FaMoon /> : <FaSun />}
+                {theme === 'light' ? 'Dark' : 'Light'}
+            </button>
+            {/* Background elements */}
+            <div className="absolute top-0 left-0 w-full h-full opacity-40">
+                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-brand-primary/10 rounded-full blur-[120px]" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-brand-secondary/10 rounded-full blur-[120px]" />
+            </div>
+
+            <div className="w-full max-w-md lumina-card p-12 relative z-10 border border-black/5 dark:border-white/5 shadow-[0_0_50px_rgba(0,0,0,0.05)] dark:shadow-[0_0_50px_rgba(34,211,238,0.1)]">
+                <div className="text-center mb-12">
+                    <div className="w-20 h-20 bg-gradient-to-br from-brand-primary/20 to-brand-secondary/20 rounded-3xl mx-auto mb-6 flex items-center justify-center border border-black/5 dark:border-white/10 relative">
+                        <div className="absolute inset-0 bg-brand-primary/20 rounded-3xl blur-xl animate-pulse" />
+                        <span className="text-white text-4xl font-black relative z-10">L</span>
+                    </div>
+                    <h2 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter mb-2 uppercase">Login</h2>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Welcome back to BragBoard</p>
                 </div>
 
                 <form onSubmit={handleLogin} className="space-y-6">
-                    <div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Email</label>
                         <input
                             type="email"
-                            placeholder="Email Address"
+                            placeholder="your@email.com"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
-                            className="w-full px-5 py-4 bg-black/20 border border-white/10 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                            className="w-full px-6 py-4 bg-black/5 dark:bg-white/[0.03] border border-black/5 dark:border-white/5 rounded-2xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-primary/50 transition-all font-medium"
                         />
                     </div>
-                    <div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Password</label>
                         <input
                             type="password"
-                            placeholder="Password"
+                            placeholder="••••••••"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             required
-                            className="w-full px-5 py-4 bg-black/20 border border-white/10 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                            className="w-full px-6 py-4 bg-black/5 dark:bg-white/[0.03] border border-black/5 dark:border-white/5 rounded-2xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-primary/50 transition-all font-medium"
                         />
                     </div>
 
                     <button
                         type="submit"
-                        className="w-full py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold rounded-xl shadow-lg transform transition hover:-translate-y-0.5"
+                        className="w-full py-4 mt-4 bg-brand-dark text-white dark:bg-white dark:text-brand-dark font-black rounded-2xl text-[10px] uppercase tracking-[0.2em] shadow-2xl transition-all lumina-glow hover:scale-[1.02] active:scale-95"
                     >
-                        Sign In
+                        Login
                     </button>
                 </form>
 
                 {message && (
-                    <div className={`mt-6 text-center text-sm font-medium ${message.includes('successful') ? 'text-green-400' : 'text-red-400'}`}>
+                    <div className={`mt-8 text-center text-[10px] font-black uppercase tracking-widest ${message.includes('successful') ? 'text-brand-primary' : 'text-red-400'}`}>
                         {message}
                     </div>
                 )}
 
-                <div className="mt-8 text-center text-gray-400">
+                <div className="mt-12 text-center text-[10px] font-black uppercase tracking-widest text-slate-500">
                     Don't have an account?{' '}
-                    <Link to="/register" className="text-blue-400 hover:text-blue-300 font-semibold hover:underline transition">
-                        Sign up
+                    <Link to="/register" className="text-brand-primary hover:text-slate-900 dark:hover:text-white transition-colors ml-2">
+                        Sign Up
                     </Link>
                 </div>
             </div>

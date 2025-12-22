@@ -57,6 +57,7 @@ class BragBase(BaseModel):
     title: str
     content: str
     image_url: Optional[str] = None
+    video_url: Optional[str] = None
     tags: Optional[str] = None
 
 class BragCreate(BragBase):
@@ -69,9 +70,45 @@ class BragResponse(BragBase):
     created_at: datetime
     author_name: str
     image_url: Optional[str] = None
+    video_url: Optional[str] = None
     tags: Optional[str] = None
 
     class Config:
         orm_mode = True
+# Shoutout Schemas
+class ShoutoutBase(BaseModel):
+    message: str
 
+class ShoutoutCreate(ShoutoutBase):
+    recipient_ids: List[int]
 
+class ShoutoutUpdate(BaseModel):
+    message: Optional[str] = None
+    recipient_ids: Optional[List[int]] = None
+
+class ShoutoutResponse(ShoutoutBase):
+    id: int
+    sender_id: int
+    sender_name: str
+    sender_username: Optional[str] = None
+    recipient_usernames: Optional[str] = None
+    recipients: List[UserResponse]
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+# Notification Schemas
+class NotificationResponse(BaseModel):
+    id: int
+    message: str
+    is_read: int
+    type: str
+    source_id: Optional[int]
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+class NotificationUpdate(BaseModel):
+    is_read: int

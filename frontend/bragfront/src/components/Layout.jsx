@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { FaHome, FaUser, FaUsers, FaBuilding, FaSignOutAlt, FaMoon, FaSun } from 'react-icons/fa';
 
+import NotificationCenter from './NotificationCenter';
+
 const Layout = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -42,82 +44,89 @@ const Layout = () => {
     ];
 
     return (
-        <div className="flex h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans overflow-hidden">
-            {/* Sidebar */}
-            <aside className="w-72 bg-white dark:bg-gray-800 shadow-2xl flex flex-col z-20 transition-all duration-300 relative">
-                {/* Logo Area */}
-                <div className="p-8 pb-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-500/30">
-                            BB
+        <div className={`flex h-screen font-sans overflow-hidden transition-colors duration-500 ${theme === 'dark' ? 'bg-brand-dark text-white' : 'bg-slate-50 text-slate-900'}`}>
+            {/* Floating Sidebar */}
+            <div className="hidden md:flex flex-col p-6 pr-0">
+                <aside className="w-64 lumina-glass flex flex-col z-20 transition-all duration-500 rounded-[2.5rem] relative h-full">
+                    {/* Logo Area */}
+                    <div className="p-8 pb-4">
+                        <div className="flex items-center gap-3 lumina-glow">
+                            <div className="w-10 h-10 bg-gradient-to-tr from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-brand-primary/20">
+                                BB
+                            </div>
+                            <span className={`text-2xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                                BragBoard
+                            </span>
                         </div>
-                        <span className="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 tracking-tight">
-                            BragBoard
-                        </span>
+
+                        {/* Theme Toggle (Simplified for Lumina) */}
+                        <button
+                            onClick={toggleTheme}
+                            className={`mt-8 w-full flex items-center justify-between gap-2 px-6 py-3 rounded-2xl transition-all text-xs font-black uppercase tracking-widest border ${theme === 'dark' ? 'bg-white/5 hover:bg-white/10 text-brand-primary border-white/5' : 'bg-slate-200 hover:bg-slate-300 text-brand-dark border-slate-300'}`}
+                        >
+                            <span className="flex items-center gap-2">
+                                {theme === 'light' ? <FaMoon /> : <FaSun />}
+                                {theme === 'light' ? 'Dark' : 'Light'}
+                            </span>
+                            <div className={`w-8 h-4 rounded-full relative transition-colors ${theme === 'dark' ? 'bg-brand-primary' : 'bg-slate-400'}`}>
+                                <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${theme === 'dark' ? 'right-0.5' : 'left-0.5'}`} />
+                            </div>
+                        </button>
                     </div>
 
-                    {/* Theme Toggle */}
-                    <button
-                        onClick={toggleTheme}
-                        className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl transition-colors text-sm font-medium"
-                        title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-                    >
-                        {theme === 'light' ? (
-                            <>
-                                <FaMoon className="text-indigo-600" />
-                                <span>Dark Mode</span>
-                            </>
-                        ) : (
-                            <>
-                                <FaSun className="text-yellow-400" />
-                                <span>Light Mode</span>
-                            </>
-                        )}
-                    </button>
-                </div>
+                    {/* Navigation */}
+                    <nav className="flex-1 overflow-y-auto px-6 py-8 space-y-2 custom-scrollbar">
+                        <p className="px-4 text-[10px] font-black text-slate-500 dark:text-white/90 uppercase tracking-[0.2em] mb-4">Core</p>
+                        {navItems.map((item) => {
+                            const isActive = location.pathname === item.path;
+                            return (
+                                <Link
+                                    key={item.path}
+                                    to={item.path}
+                                    className={`flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${isActive
+                                        ? 'bg-gradient-to-r from-brand-primary/20 to-transparent text-brand-primary border-l-2 border-brand-primary font-bold'
+                                        : 'text-slate-600 dark:text-white hover:text-slate-900 dark:hover:text-white/80 hover:bg-black/5 dark:hover:bg-white/5'
+                                        }`}
+                                >
+                                    <span className={`text-xl transition-all ${isActive ? 'scale-110 drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]' : ''}`}>
+                                        {item.icon}
+                                    </span>
+                                    <span className="text-sm tracking-wide">{item.label}</span>
+                                </Link>
+                            );
+                        })}
+                    </nav>
 
-                {/* Navigation */}
-                <nav className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
-                    <p className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Menu</p>
-                    {navItems.map((item) => {
-                        const isActive = location.pathname === item.path;
-                        return (
-                            <Link
-                                key={item.path}
-                                to={item.path}
-                                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${isActive
-                                    ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 font-semibold'
-                                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-gray-200'
-                                    }`}
-                            >
-                                <span className={`text-lg transition-colors ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 group-hover:text-gray-500'}`}>
-                                    {item.icon}
-                                </span>
-                                <span>{item.label}</span>
-                                {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400" />}
-                            </Link>
-                        );
-                    })}
-                </nav>
-
-                {/* User Profile / Logout */}
-                <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 backdrop-blur-sm">
-                    <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-3 w-full px-4 py-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors duration-200 font-medium text-sm"
-                    >
-                        <FaSignOutAlt />
-                        <span>Sign Out</span>
-                    </button>
-                </div>
-            </aside>
+                    {/* Footer / Logout */}
+                    <div className="p-6">
+                        <button
+                            onClick={handleLogout}
+                            className="flex items-center justify-center gap-3 w-full px-6 py-4 text-slate-600 dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded-2xl transition-all text-sm font-bold"
+                        >
+                            <FaSignOutAlt />
+                            <span>Sign Out</span>
+                        </button>
+                    </div>
+                </aside>
+            </div>
 
             {/* Main Content */}
-            <main className="flex-1 relative overflow-y-auto bg-gray-50 dark:bg-gray-900">
-                {/* Top decorative gradient mesh */}
-                <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-indigo-50/50 to-transparent dark:from-indigo-900/10 pointer-events-none" />
+            <main className="flex-1 relative overflow-y-auto custom-scrollbar">
+                {/* Nebula Overlay Elements */}
+                <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-brand-primary/5 rounded-full blur-[120px] pointer-events-none" />
+                <div className="fixed bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-brand-secondary/5 rounded-full blur-[150px] pointer-events-none" />
 
-                <div className="relative p-6 md:p-10 max-w-7xl mx-auto min-h-full">
+                <div className="relative p-6 md:p-12 max-w-7xl mx-auto min-h-full">
+                    <header className="flex justify-between items-center mb-12">
+                        <div className="flex-1" />
+                        <div className="flex items-center gap-6">
+                            <NotificationCenter />
+                            {/* Simple user initial circle */}
+                            <div className={`w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-xs font-bold lumina-glow ${theme === 'dark' ? 'bg-gradient-to-br from-brand-primary/20 to-brand-secondary/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                                U
+                            </div>
+                        </div>
+                    </header>
                     <Outlet />
                 </div>
             </main>

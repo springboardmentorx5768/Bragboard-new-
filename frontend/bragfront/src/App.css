@@ -1,20 +1,12 @@
 /* @import "tailwindcss"; removed - using version 3 directives in index.css */
 
-:root {
-  --primary-color: #63c4f1;
-  --bg-gradient-start: #1e1b4b;
-  --bg-gradient-end: #4f2e81;
-}
+/* Global variables are now primarily handled via Lumina theme palette in tailwind.config.js */
+
 
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #0f172a;
-  /* Fallback */
 }
 
 .App {

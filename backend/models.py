@@ -35,6 +35,7 @@ class User(Base):
     joined_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     
     brags = relationship("Brag", back_populates="user")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
 
 class Brag(Base):
     __tablename__ = "brags"
@@ -43,6 +44,7 @@ class Brag(Base):
     title = Column(String, nullable=False)
     content = Column(String, nullable=False)
     image_url = Column(Text, nullable=True)  # Base64 encoded image data
+    video_url = Column(Text, nullable=True)  # Base64 encoded video data
     tags = Column(String, nullable=True)  # Comma-separated tags
     
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=False)
@@ -53,12 +55,46 @@ class Brag(Base):
     
 
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
-    
-    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
     
     @property
     def author_name(self):
         return self.user.name if self.user else "Unknown"
 
+# Association table for Shout-outs and Recipients
+shoutout_recipients = Table(
+    "shoutout_recipients",
+    Base.metadata,
+    Column("shoutout_id", Integer, ForeignKey("shoutouts.id"), primary_key=True),
+    Column("user_id", Integer, ForeignKey("users.id"), primary_key=True)
+)
 
+class Shoutout(Base):
+    __tablename__ = "shoutouts"
 
+    id = Column(Integer, primary_key=True, index=True)
+    message = Column(Text, nullable=False)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    sender_username = Column(String, nullable=True)  # Denormalized sender username
+    recipient_usernames = Column(Text, nullable=True)  # Comma-separated recipient usernames
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+    sender = relationship("User", foreign_keys=[sender_id])
+    recipients = relationship("User", secondary=shoutout_recipients)
+
+    @property
+    def sender_name(self):
+        return self.sender.name if self.sender else "Unknown"
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    message = Column(String, nullable=False)
+    is_read = Column(Integer, default=0) # 0 for unread, 1 for read (similar to boolean)
+    type = Column(String, default="shoutout")
+    source_id = Column(Integer, nullable=True) # e.g., shoutout_id
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+    user = relationship("User", back_populates="notifications")

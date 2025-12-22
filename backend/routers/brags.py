@@ -26,6 +26,7 @@ def create_brag(
             title=brag.title,
             content=brag.content,
             image_url=brag.image_url,
+            video_url=brag.video_url,
             tags=brag.tags,
             user_id=current_user.id,
             department_id=current_user.department_id
@@ -33,6 +34,32 @@ def create_brag(
         db.add(new_brag)
         db.commit()
         db.refresh(new_brag)
+
+        # Create self-notification
+        self_notification = models.Notification(
+            user_id=current_user.id,
+            message="You posted a brag!",
+            type="brag",
+            source_id=new_brag.id
+        )
+        db.add(self_notification)
+
+        # Create notifications for department colleagues
+        colleagues = db.query(models.User).filter(
+            models.User.department_id == current_user.department_id,
+            models.User.id != current_user.id
+        ).all()
+        
+        for col in colleagues:
+            col_notification = models.Notification(
+                user_id=col.id,
+                message=f"{current_user.name} shared a new brag!",
+                type="brag",
+                source_id=new_brag.id
+            )
+            db.add(col_notification)
+        
+        db.commit()
         return new_brag
     except Exception as e:
         db.rollback()
@@ -100,6 +127,7 @@ def update_brag(
     brag.title = brag_update.title
     brag.content = brag_update.content
     brag.image_url = brag_update.image_url
+    brag.video_url = brag_update.video_url
     brag.tags = brag_update.tags
     
     db.commit()

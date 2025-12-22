@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from typing import List
 from database import get_db
 import models, schemas, auth
 print(f"DEBUG: auth module loaded in router is: {auth}")
@@ -94,4 +95,6 @@ def update_user_me(
     db.refresh(current_user)
     return current_user
 
-
+@router.get("/users", response_model=List[schemas.UserResponse])
+def get_all_users(db: Session = Depends(get_db)):
+    return db.query(models.User).all()

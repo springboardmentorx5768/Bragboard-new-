@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session 
 from database import engine, get_db
 import models
-from routers import auth_router as auth, brags, departments
+from routers import auth_router as auth, brags, departments, shoutouts, notifications
 
 # Create tables
 models.Base.metadata.create_all(bind=engine)
@@ -22,6 +22,8 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(brags.router)
 app.include_router(departments.router)
+app.include_router(shoutouts.router)
+app.include_router(notifications.router)
 
 @app.get('/api/greet')
 async def greet():
