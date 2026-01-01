@@ -1,0 +1,19 @@
+/* @import "tailwindcss"; removed - using version 3 directives in index.css */
+
+/* Global variables are now primarily handled via Lumina theme palette in tailwind.config.js */
+
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.App {
+  min-height: 100vh;
+}
+
+/* 
+   Legacy classes removed. 
+   All styling is now handled via Tailwind utility classes in respective components.
+*/
