@@ -1,14 +1,15 @@
 import React from 'react';
 import { FaTimes, FaHeart, FaCalendar, FaUser } from 'react-icons/fa';
+import ReactionButton from './ReactionButton';
 
-const ShoutOutDetailModal = ({ shoutout, onClose, onViewed }) => {
+const ShoutOutDetailModal = ({ shoutout, onClose, onViewed, onReact }) => {
     const token = localStorage.getItem('token');
 
     React.useEffect(() => {
         // Mark as viewed when modal opens
         const markViewed = async () => {
             if (!shoutout || !token) return;
-            
+
             try {
                 const response = await fetch(`/api/shoutouts/${shoutout.id}/mark-viewed`, {
                     method: 'PUT',
@@ -16,7 +17,7 @@ const ShoutOutDetailModal = ({ shoutout, onClose, onViewed }) => {
                         'Authorization': `Bearer ${token}`
                     }
                 });
-                
+
                 if (response.ok || response.status === 204) {
                     if (onViewed) {
                         onViewed(shoutout.id);
@@ -26,7 +27,7 @@ const ShoutOutDetailModal = ({ shoutout, onClose, onViewed }) => {
                 console.error("Failed to mark shout-out as viewed", error);
             }
         };
-        
+
         if (shoutout?.id) {
             markViewed();
         }
@@ -35,14 +36,14 @@ const ShoutOutDetailModal = ({ shoutout, onClose, onViewed }) => {
 
     if (!shoutout) return null;
 
-    const dateString = shoutout.created_at 
-        ? new Date(shoutout.created_at).toLocaleString([], { 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric', 
-            hour: '2-digit', 
-            minute: '2-digit' 
-        }) 
+    const dateString = shoutout.created_at
+        ? new Date(shoutout.created_at).toLocaleString([], {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        })
         : 'Recently';
 
     return (
@@ -50,7 +51,7 @@ const ShoutOutDetailModal = ({ shoutout, onClose, onViewed }) => {
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
             onClick={onClose}
         >
-            <div 
+            <div
                 className="relative bg-white dark:bg-gray-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-scale-in"
                 onClick={(e) => e.stopPropagation()}
             >
@@ -65,8 +66,8 @@ const ShoutOutDetailModal = ({ shoutout, onClose, onViewed }) => {
                             <p className="text-sm text-pink-100">Appreciation from your team</p>
                         </div>
                     </div>
-                    <button 
-                        onClick={onClose} 
+                    <button
+                        onClick={onClose}
                         className="p-2 hover:bg-white/20 rounded-full transition-colors"
                     >
                         <FaTimes className="text-white text-lg" />
@@ -120,9 +121,9 @@ const ShoutOutDetailModal = ({ shoutout, onClose, onViewed }) => {
                     {/* Image */}
                     {shoutout.image_url && (
                         <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up animation-delay-200">
-                            <img 
-                                src={shoutout.image_url} 
-                                alt="Post attachment" 
+                            <img
+                                src={shoutout.image_url}
+                                alt="Post attachment"
                                 className="w-full max-h-96 object-cover hover:scale-105 transition-transform duration-500"
                             />
                         </div>
@@ -132,8 +133,8 @@ const ShoutOutDetailModal = ({ shoutout, onClose, onViewed }) => {
                     {shoutout.tags && (
                         <div className="flex gap-2 flex-wrap animate-fade-in-up animation-delay-300">
                             {shoutout.tags.split(',').map((tag, i) => (
-                                <span 
-                                    key={i} 
+                                <span
+                                    key={i}
                                     className="text-sm font-bold text-indigo-500 bg-indigo-100 dark:bg-indigo-900/30 px-3 py-1.5 rounded-full hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors"
                                 >
                                     #{tag.trim()}
@@ -150,7 +151,7 @@ const ShoutOutDetailModal = ({ shoutout, onClose, onViewed }) => {
                             </p>
                             <div className="flex flex-wrap gap-2">
                                 {shoutout.recipients.map((rec, i) => (
-                                    <span 
+                                    <span
                                         key={i}
                                         className="text-xs bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full text-gray-600 dark:text-gray-300"
                                     >
@@ -163,11 +164,20 @@ const ShoutOutDetailModal = ({ shoutout, onClose, onViewed }) => {
                 </div>
 
                 {/* Footer */}
-                <div className="p-6 border-t border-gray-100 dark:border-gray-700 bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-900/10 dark:to-purple-900/10 flex items-center justify-center gap-2">
-                    <FaHeart className="text-pink-500 animate-pulse" />
-                    <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                        You were appreciated!
-                    </span>
+                <div className="p-6 border-t border-gray-100 dark:border-gray-700 bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-900/10 dark:to-purple-900/10 flex items-center justify-between gap-2">
+                    <ReactionButton
+                        shoutoutId={shoutout.id}
+                        counts={shoutout.reaction_counts}
+                        userReactions={shoutout.current_user_reactions}
+                        onReact={onReact}
+                    />
+
+                    <div className="flex items-center gap-2">
+                        <FaHeart className="text-pink-500 animate-pulse" />
+                        <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                            You were appreciated!
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -175,4 +185,3 @@ const ShoutOutDetailModal = ({ shoutout, onClose, onViewed }) => {
 };
 
 export default ShoutOutDetailModal;
-

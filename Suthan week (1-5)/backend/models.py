@@ -121,3 +121,18 @@ class AdminLog(Base):
     timestamp = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
     admin = relationship("User", foreign_keys=[admin_id])
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    recipient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    type = Column(String, nullable=False) # 'reaction', 'shoutout'
+    message = Column(Text, nullable=False)
+    reference_id = Column(Integer, nullable=True) # ID of the related object (e.g. shoutout_id)
+    is_read = Column(String, default='false') # Using String 'true'/'false' to match other boolean-like fields in this legacy DB style
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+    recipient = relationship("User", foreign_keys=[recipient_id])
+    actor = relationship("User", foreign_keys=[actor_id])

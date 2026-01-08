@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
-from typing import List
+from typing import List, Dict, Any
 from database import get_db
 import models, schemas, auth
 
@@ -13,8 +13,67 @@ def get_shoutout_query(db: Session):
     """Base query with all relationships loaded"""
     return db.query(models.ShoutOut).options(
         joinedload(models.ShoutOut.sender).joinedload(models.User.department),
-        joinedload(models.ShoutOut.recipients).joinedload(models.ShoutOutRecipient.recipient).joinedload(models.User.department)
+        joinedload(models.ShoutOut.recipients).joinedload(models.ShoutOutRecipient.recipient).joinedload(models.User.department),
+        joinedload(models.ShoutOut.reactions)
     )
+
+def enrich_shoutout(shoutout: models.ShoutOut, current_user_id: int):
+    """Process reactions to add count and user status"""
+    counts = {}
+    user_reactions = []
+    
+    # Ensure reactions are loaded
+    if shoutout.reactions:
+        for r in shoutout.reactions:
+            # r.type is an Enum, get the value (string)
+            r_type = r.type.value if hasattr(r.type, 'value') else r.type
+            counts[r_type] = counts.get(r_type, 0) + 1
+            if r.user_id == current_user_id:
+                user_reactions.append(r_type)
+    
+    # Set attributes for Pydantic to pick up
+    shoutout.reaction_counts = counts
+    shoutout.current_user_reactions = user_reactions
+    return shoutout
+
+# ... existing code ...
+
+@router.post("/{id}/react", response_model=schemas.ShoutOutResponse)
+def react_to_shoutout(
+    id: int,
+    reaction_data: schemas.ReactionBase,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Toggle reaction: Add if not exists, Remove if exists. Supports multiple types."""
+    shoutout = db.query(models.ShoutOut).filter(models.ShoutOut.id == id).first()
+    if not shoutout:
+        raise HTTPException(status_code=404, detail="Shoutout not found")
+        
+    # Check for THIS specific reaction type from this user
+    existing_reaction = db.query(models.Reaction).filter(
+        models.Reaction.shoutout_id == id,
+        models.Reaction.user_id == current_user.id,
+        models.Reaction.type == reaction_data.type
+    ).first()
+    
+    if existing_reaction:
+        # If exists, remove it (toggle off)
+        db.delete(existing_reaction)
+    else:
+        # If not exists, add it (toggle on)
+        new_reaction = models.Reaction(
+            shoutout_id=id,
+            user_id=current_user.id,
+            type=reaction_data.type
+        )
+        db.add(new_reaction)
+        
+    db.commit()
+    
+    # Reload and return updated shoutout
+    updated_shoutout = get_shoutout_query(db).filter(models.ShoutOut.id == id).first()
+    return enrich_shoutout(updated_shoutout, current_user.id)
 
 @router.post("/", response_model=schemas.ShoutOutResponse)
 def create_shoutout(
@@ -78,7 +137,7 @@ def create_shoutout(
                     detail="Failed to retrieve created shoutout after update"
                 )
         
-        return final_shoutout
+        return enrich_shoutout(final_shoutout, current_user.id)
     except HTTPException:
         raise
     except Exception as e:
@@ -130,7 +189,8 @@ def get_shoutouts(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date_to format. Use YYYY-MM-DD")
 
-    return query.order_by(models.ShoutOut.created_at.desc()).all()
+    results = query.order_by(models.ShoutOut.created_at.desc()).all()
+    return [enrich_shoutout(s, current_user.id) for s in results]
 
 @router.get("/received", response_model=List[schemas.ShoutOutResponse])
 def get_received_shoutouts(
@@ -152,7 +212,8 @@ def get_received_shoutouts(
             (models.ShoutOutRecipient.viewed == None) | (models.ShoutOutRecipient.viewed == 'false')
         )
     
-    return query.order_by(models.ShoutOut.created_at.desc()).all()
+    results = query.order_by(models.ShoutOut.created_at.desc()).all()
+    return [enrich_shoutout(s, current_user.id) for s in results]
 
 @router.put("/{id}/mark-viewed", status_code=status.HTTP_204_NO_CONTENT)
 def mark_shoutout_viewed(
@@ -188,3 +249,51 @@ def delete_shoutout(
     
     db.delete(shoutout)
     db.commit()
+
+@router.post("/{id}/react", response_model=schemas.ShoutOutResponse)
+def react_to_shoutout(
+    id: int,
+    reaction_data: schemas.ReactionBase,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Toggle reaction: Add if not exists, Remove if exists. Supports multiple types."""
+    shoutout = db.query(models.ShoutOut).filter(models.ShoutOut.id == id).first()
+    if not shoutout:
+        raise HTTPException(status_code=404, detail="Shoutout not found")
+        
+    # Check for THIS specific reaction type from this user
+    existing_reaction = db.query(models.Reaction).filter(
+        models.Reaction.shoutout_id == id,
+        models.Reaction.user_id == current_user.id,
+        models.Reaction.type == reaction_data.type
+    ).first()
+    
+    if existing_reaction:
+        # If exists, remove it (toggle off)
+        db.delete(existing_reaction)
+    else:
+        # If not exists, add it (toggle on)
+        new_reaction = models.Reaction(
+            shoutout_id=id,
+            user_id=current_user.id,
+            type=reaction_data.type
+        )
+        db.add(new_reaction)
+
+        # Create Notification for the Shoutout Sender
+        if shoutout.sender_id != current_user.id:
+            notification = models.Notification(
+                recipient_id=shoutout.sender_id,
+                actor_id=current_user.id,
+                type='reaction',
+                message=f"reacted to your shoutout with {reaction_data.type}",
+                reference_id=shoutout.id
+            )
+            db.add(notification)
+        
+    db.commit()
+    
+    # Reload and return updated shoutout
+    updated_shoutout = get_shoutout_query(db).filter(models.ShoutOut.id == id).first()
+    return enrich_shoutout(updated_shoutout, current_user.id)

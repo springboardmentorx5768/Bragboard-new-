@@ -54,6 +54,26 @@ class UserUpdate(BaseModel):
     department_id: Optional[int] = None
 
 # ShoutOut Schemas
+class ReactionBase(BaseModel):
+    type: ReactionType
+
+# Notification Schemas
+class NotificationBase(BaseModel):
+    recipient_id: int
+    actor_id: int
+    type: str
+    message: str
+    reference_id: Optional[int] = None
+
+class NotificationResponse(NotificationBase):
+    id: int
+    is_read: str
+    created_at: datetime
+    actor: Optional[UserResponse] = None
+
+    class Config:
+        orm_mode = True
+
 class ShoutOutBase(BaseModel):
     message: str
     title: Optional[str] = None
@@ -77,6 +97,8 @@ class ShoutOutResponse(ShoutOutBase):
     sender: Optional[UserResponse] = None
     recipients: List[ShoutOutRecipientResponse] = []
     created_at: datetime
+    reaction_counts: dict = {}
+    current_user_reactions: List[ReactionType] = []
 
     class Config:
         orm_mode = True

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaArrowLeft, FaBullhorn, FaTrash } from 'react-icons/fa';
+import ReactionButton from '../components/ReactionButton';
 
 const DepartmentFeed = () => {
     const navigate = useNavigate();
@@ -102,8 +103,8 @@ const DepartmentFeed = () => {
                         senderId: shout.sender_id,
                         user: shout.sender?.name || 'Someone',
                         action: 'sent a post to',
-                        item: Array.isArray(shout.recipients) && shout.recipients.length > 0 
-                            ? shout.recipients.map(r => r.recipient?.name || 'Unknown').join(', ') 
+                        item: Array.isArray(shout.recipients) && shout.recipients.length > 0
+                            ? shout.recipients.map(r => r.recipient?.name || 'Unknown').join(', ')
                             : 'Someone',
                         message: shout.message,
                         title: shout.title,
@@ -111,7 +112,9 @@ const DepartmentFeed = () => {
                         tags: shout.tags,
                         time: createdDate ? createdDate.getTime() : Date.now(),
                         displayTime: dateString,
-                        shoutout: shout
+                        shoutout: shout,
+                        reaction_counts: shout.reaction_counts,
+                        current_user_reaction: shout.current_user_reaction,
                     };
                 });
 
@@ -144,13 +147,54 @@ const DepartmentFeed = () => {
         }
     };
 
+    const handleReaction = async (shoutoutId, type) => {
+        try {
+            const response = await fetch(`/api/shoutouts/${shoutoutId}/react`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ type })
+            });
+
+            if (response.ok) {
+                const updatedShoutout = await response.json();
+
+                // Update specific item in shoutouts
+                setShoutouts(prev => prev.map(activity => {
+                    if (activity.shoutId === shoutoutId) {
+                        return {
+                            ...activity,
+                            shoutout: { ...activity.shoutout, ...updatedShoutout } // update nested raw object if needed
+                        };
+                    }
+                    return activity;
+                }));
+                // Actually the mapped object needs update, not just raw shoutout
+                setShoutouts(prev => prev.map(activity => {
+                    if (activity.shoutId === shoutoutId) {
+                        return {
+                            ...activity,
+                            reaction_counts: updatedShoutout.reaction_counts,
+                            current_user_reactions: updatedShoutout.current_user_reactions
+                        };
+                    }
+                    return activity;
+                }));
+            }
+        } catch (error) {
+            console.error("Failed to react", error);
+        }
+    };
+
     if (loading) return <div className="flex justify-center items-center h-screen text-indigo-600 font-bold">Loading Feed...</div>;
 
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-10">
             <div className="flex items-center gap-4 mb-8">
-                <button 
-                    onClick={() => navigate('/dashboard')} 
+                <button
+                    onClick={() => navigate('/dashboard')}
                     className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors hover-glow"
                 >
                     <FaArrowLeft />
@@ -283,6 +327,14 @@ const DepartmentFeed = () => {
                                         <p className="text-xs font-semibold text-gray-400 mt-2 flex items-center gap-1">
                                             {activity.displayTime}
                                         </p>
+                                        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                                            <ReactionButton
+                                                shoutoutId={activity.shoutId}
+                                                counts={activity.reaction_counts}
+                                                userReactions={activity.current_user_reactions}
+                                                onReact={handleReaction}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>

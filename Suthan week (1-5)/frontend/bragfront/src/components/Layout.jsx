@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { FaHome, FaUser, FaUsers, FaBuilding, FaSignOutAlt, FaMoon, FaSun, FaBullhorn } from 'react-icons/fa';
+import { FaHome, FaUser, FaBuilding, FaSignOutAlt, FaMoon, FaSun, FaBullhorn, FaBell, FaCheck, FaTrash } from 'react-icons/fa';
 
 const Layout = () => {
     const navigate = useNavigate();
@@ -87,7 +87,7 @@ const Layout = () => {
             return () => clearInterval(interval);
         }
     }, [token]);
-    
+
     // Refresh count when navigating to notifications page
     useEffect(() => {
         if (location.pathname === '/notifications' && token) {
@@ -109,6 +109,73 @@ const Layout = () => {
             fetchShoutoutsCount();
         }
     }, [location.pathname, token]);
+
+    // Notifications Logic
+    const [notifications, setNotifications] = useState([]);
+    const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+    const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+
+    const fetchNotifications = async () => {
+        try {
+            const cacheBuster = `?_=${Date.now()}`;
+            const response = await fetch(`/api/notifications/${cacheBuster}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setNotifications(Array.isArray(data) ? data : []);
+                setUnreadNotifCount(data.filter(n => n.is_read === 'false' || !n.is_read).length);
+            }
+        } catch (error) {
+            console.error("Failed to fetch notifications", error);
+        }
+    };
+
+    useEffect(() => {
+        if (token) {
+            fetchNotifications();
+            const interval = setInterval(fetchNotifications, 30000); // Poll every 30s
+            return () => clearInterval(interval);
+        }
+    }, [token]);
+
+    const markAsRead = async (id) => {
+        try {
+            await fetch(`/api/notifications/${id}/read`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            // Optimistic update
+            setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: 'true' } : n));
+            setUnreadNotifCount(prev => Math.max(0, prev - 1));
+        } catch (error) {
+            console.error("Failed to mark read", error);
+        }
+    };
+
+    const markAllRead = async () => {
+        try {
+            await fetch(`/api/notifications/mark-all-read`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            setNotifications(prev => prev.map(n => ({ ...n, is_read: 'true' })));
+            setUnreadNotifCount(0);
+        } catch (error) {
+            console.error("Failed to mark all read", error);
+        }
+    };
+
+    // Close Notif dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (!event.target.closest('.notif-dropdown-container')) {
+                setShowNotifDropdown(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const navItems = [
         { path: '/dashboard', label: 'Dashboard', icon: <FaHome /> },
@@ -249,46 +316,119 @@ const Layout = () => {
                 {/* Top decorative gradient mesh */}
                 <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-indigo-50/50 to-transparent dark:from-indigo-900/10 pointer-events-none" />
 
-                {/* User Name in Top Right - Clickable with Dropdown */}
-                <div className="absolute top-6 right-6 md:right-10 z-10 user-dropdown-container">
-                    <div
-                        className="flex items-center gap-3 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md px-4 py-2 rounded-full shadow-lg border border-gray-200/50 dark:border-gray-700/50 hover:shadow-xl transition-all cursor-pointer"
-                        onClick={() => setShowUserDropdown(!showUserDropdown)}
-                    >
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
-                            {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
-                        </div>
-                        <div className="hidden sm:block">
-                            <p className="text-sm font-bold text-gray-900 dark:text-white">
-                                {user?.name || 'User'}
-                            </p>
-                        </div>
+                {/* Notifications & Profile Top Bar */}
+                <div className="absolute top-6 right-6 md:right-10 z-10 flex items-center gap-4">
+
+                    {/* Notification Bell */}
+                    <div className="relative notif-dropdown-container">
+                        <button
+                            className="relative p-2 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-full shadow-md hover:shadow-lg transition-all text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400"
+                            onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+                        >
+                            <FaBell className="text-xl" />
+                            {unreadNotifCount > 0 && (
+                                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm animate-bounce-gentle">
+                                    {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                                </span>
+                            )}
+                        </button>
+
+                        {/* Notification Dropdown */}
+                        {showNotifDropdown && (
+                            <div className="absolute right-0 mt-3 w-80 sm:w-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden animate-scale-in origin-top-right z-50">
+                                <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+                                    <h3 className="font-bold text-gray-900 dark:text-white">Notifications</h3>
+                                    {unreadNotifCount > 0 && (
+                                        <button
+                                            onClick={markAllRead}
+                                            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                                        >
+                                            <FaCheck /> Mark all read
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="max-h-80 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700 scrollbar-thin scrollbar-thumb-gray-200 dark:scrollbar-thumb-gray-600">
+                                    {notifications.length === 0 ? (
+                                        <div className="p-8 text-center text-gray-400">
+                                            <FaBell className="mx-auto text-3xl mb-2 opacity-20" />
+                                            <p className="text-sm">No notifications yet</p>
+                                        </div>
+                                    ) : (
+                                        notifications.map(notif => (
+                                            <div
+                                                key={notif.id}
+                                                className={`p-4 flex gap-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer ${notif.is_read === 'false' || !notif.is_read ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : ''}`}
+                                                onClick={() => markAsRead(notif.id)}
+                                            >
+                                                <div className="flex-shrink-0">
+                                                    <img
+                                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${notif.actor_id || 'sys'}`}
+                                                        alt="User"
+                                                        className="w-10 h-10 rounded-full bg-gray-200"
+                                                    />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm text-gray-800 dark:text-gray-200">
+                                                        <span className="font-bold">{notif.actor?.name || 'Someone'}</span> {notif.message}
+                                                    </p>
+                                                    <p className="text-xs text-gray-400 mt-1">
+                                                        {new Date(notif.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                    </p>
+                                                </div>
+                                                {(!notif.is_read || notif.is_read === 'false') && (
+                                                    <div className="flex-shrink-0 self-center">
+                                                        <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Dropdown Menu */}
-                    {showUserDropdown && (
-                        <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden animate-scale-in origin-top-right">
-                            <Link
-                                to="/profile"
-                                className="block px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                                onClick={() => setShowUserDropdown(false)}
-                            >
-                                <div className="flex items-center gap-2">
-                                    <FaUser className="text-gray-400" />
-                                    Edit Profile
-                                </div>
-                            </Link>
-                            <button
-                                onClick={handleLogout}
-                                className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-t border-gray-100 dark:border-gray-700"
-                            >
-                                <div className="flex items-center gap-2 font-bold">
-                                    <FaSignOutAlt />
-                                    Sign Out
-                                </div>
-                            </button>
+                    {/* User Profile Dropdown */}
+                    <div className="relative user-dropdown-container">
+                        <div
+                            className="flex items-center gap-3 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md px-4 py-2 rounded-full shadow-lg border border-gray-200/50 dark:border-gray-700/50 hover:shadow-xl transition-all cursor-pointer"
+                            onClick={() => setShowUserDropdown(!showUserDropdown)}
+                        >
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                                {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                            <div className="hidden sm:block">
+                                <p className="text-sm font-bold text-gray-900 dark:text-white">
+                                    {user?.name || 'User'}
+                                </p>
+                            </div>
                         </div>
-                    )}
+
+                        {/* Dropdown Menu */}
+                        {showUserDropdown && (
+                            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden animate-scale-in origin-top-right">
+                                <Link
+                                    to="/profile"
+                                    className="block px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                                    onClick={() => setShowUserDropdown(false)}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <FaUser className="text-gray-400" />
+                                        Edit Profile
+                                    </div>
+                                </Link>
+                                <button
+                                    onClick={handleLogout}
+                                    className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-t border-gray-100 dark:border-gray-700"
+                                >
+                                    <div className="flex items-center gap-2 font-bold">
+                                        <FaSignOutAlt />
+                                        Sign Out
+                                    </div>
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 <div className="relative p-6 md:p-10 max-w-7xl mx-auto min-h-full">

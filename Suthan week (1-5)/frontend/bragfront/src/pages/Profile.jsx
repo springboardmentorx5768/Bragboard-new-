@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FaUserCircle, FaBuilding, FaBriefcase, FaEnvelope, FaCalendarAlt, FaBullhorn, FaEdit, FaSave, FaTimes, FaTrophy } from 'react-icons/fa';
+import ReactionButton from '../components/ReactionButton';
 
 const Profile = () => {
     const navigate = useNavigate();
@@ -124,6 +125,31 @@ const Profile = () => {
             }
         } catch (error) {
             console.error("Error deleting brag", error);
+        }
+    };
+
+    const handleReaction = async (shoutoutId, type) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`/api/shoutouts/${shoutoutId}/react`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ type })
+            });
+
+            if (response.ok) {
+                const updatedShoutout = await response.json();
+
+                // Update local list
+                setMyBrags(prev => prev.map(s =>
+                    s.id === shoutoutId ? { ...s, ...updatedShoutout } : s
+                ));
+            }
+        } catch (error) {
+            console.error("Failed to react", error);
         }
     };
 
@@ -335,6 +361,14 @@ const Profile = () => {
                                 <p className="text-gray-600 dark:text-gray-300 leading-relaxed italic">
                                     "{shout.message}"
                                 </p>
+                                <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                                    <ReactionButton
+                                        shoutoutId={shout.id}
+                                        counts={shout.reaction_counts}
+                                        userReactions={shout.current_user_reactions}
+                                        onReact={handleReaction}
+                                    />
+                                </div>
                             </div>
                         ))
                     )}

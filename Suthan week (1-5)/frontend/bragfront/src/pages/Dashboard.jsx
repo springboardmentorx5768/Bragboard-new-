@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { FaTrophy, FaUsers, FaPlus, FaArrowRight, FaTimes, FaTrash, FaRocket, FaGhost, FaSmileWink, FaStar, FaRunning, FaChild, FaLaptop } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import CreatePostModal from '../components/CreatePostModal';
+import ReactionButton from '../components/ReactionButton';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -28,7 +29,7 @@ const Dashboard = () => {
 
   const fetchData = React.useCallback(async () => {
     if (!token) return;
-    
+
     try {
       const headers = { 'Authorization': `Bearer ${token}` };
       const cacheBuster = `?_=${Date.now()}`;
@@ -151,8 +152,8 @@ const Dashboard = () => {
           senderId: shout.sender_id,
           user: shout.sender?.name || 'Someone',
           action: 'sent a post to',
-          item: Array.isArray(shout.recipients) && shout.recipients.length > 0 
-            ? shout.recipients.map(r => r.recipient?.name || 'Unknown').join(', ') 
+          item: Array.isArray(shout.recipients) && shout.recipients.length > 0
+            ? shout.recipients.map(r => r.recipient?.name || 'Unknown').join(', ')
             : 'Someone',
           message: shout.message,
           title: shout.title,
@@ -161,6 +162,8 @@ const Dashboard = () => {
           time: createdDate ? createdDate.getTime() : Date.now(),
           displayTime: dateString,
           avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${shout.sender_id}`,
+          reaction_counts: shout.reaction_counts,
+          current_user_reaction: shout.current_user_reaction,
         };
       });
 
@@ -197,6 +200,37 @@ const Dashboard = () => {
       }
     } catch (error) {
       console.error("Error deleting post", error);
+    }
+  };
+
+  const handleReaction = async (shoutoutId, type) => {
+    try {
+      const response = await fetch(`/api/shoutouts/${shoutoutId}/react`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ type })
+      });
+
+      if (response.ok) {
+        const updatedShoutout = await response.json();
+
+        // Update specific item in recentActivity without full refetch
+        setRecentActivity(prev => prev.map(activity => {
+          if (activity.shoutId === shoutoutId) {
+            return {
+              ...activity,
+              reaction_counts: updatedShoutout.reaction_counts,
+              current_user_reactions: updatedShoutout.current_user_reactions
+            };
+          }
+          return activity;
+        }));
+      }
+    } catch (error) {
+      console.error("Failed to react", error);
     }
   };
 
@@ -240,7 +274,7 @@ const Dashboard = () => {
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:shadow-indigo-500/30 flex items-center gap-2 transform hover:-translate-y-0.5 hover-glow"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:shadow-indigo-500/30 flex items-center gap-2 transform hover:-translate-y-0.5 hover-glow"
         >
           <FaPlus /> Create Post
         </button>
@@ -438,6 +472,13 @@ const Dashboard = () => {
                         <p className="text-xs font-semibold text-gray-400 mt-2 flex items-center gap-1">
                           {activity.displayTime}
                         </p>
+                        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                          <ReactionButton
+                            shoutoutId={activity.id}
+                            counts={activity.reaction_counts}
+                            userReactions={activity.current_user_reactions}
+                            onReact={handleReaction}
+                          />                 </div>
                       </div>
                     </div>
                   </div>
@@ -518,17 +559,16 @@ const Dashboard = () => {
                 <FaTimes />
               </button>
             </div>
-            
+
             {/* Department Filter */}
             <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   onClick={() => setSelectedDepartmentFilter(null)}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                    selectedDepartmentFilter === null
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${selectedDepartmentFilter === null
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
                 >
                   All Departments
                 </button>
@@ -536,11 +576,10 @@ const Dashboard = () => {
                   <button
                     key={dept.id}
                     onClick={() => setSelectedDepartmentFilter(dept.id)}
-                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                      selectedDepartmentFilter === dept.id
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${selectedDepartmentFilter === dept.id
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
                   >
                     {dept.name}
                   </button>
@@ -556,45 +595,45 @@ const Dashboard = () => {
 
                 if (filteredData.length === 0) {
                   return (
-                <div className="text-center py-12 text-gray-400">
-                  <FaUsers className="text-5xl mx-auto mb-4 opacity-50" />
+                    <div className="text-center py-12 text-gray-400">
+                      <FaUsers className="text-5xl mx-auto mb-4 opacity-50" />
                       <p>No team members{selectedDepartmentFilter ? ' in this department' : ''} yet</p>
-                </div>
+                    </div>
                   );
                 }
 
                 return (
-                <div className="space-y-3">
+                  <div className="space-y-3">
                     {filteredData.map((member, index) => {
-                    return (
-                      <div
-                        key={member.id}
-                        className={`flex items-center gap-4 p-4 rounded-xl transition-all ${index < 3
+                      return (
+                        <div
+                          key={member.id}
+                          className={`flex items-center gap-4 p-4 rounded-xl transition-all ${index < 3
                             ? 'bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border-2 border-indigo-200 dark:border-indigo-700 transform hover:scale-[1.02]'
-                          : 'bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
-                          }`}
-                      >
-                        <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 text-white font-bold text-lg flex-shrink-0">
-                          {member.name.charAt(0)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-bold text-gray-900 dark:text-white truncate">{member.name}</h4>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                            {member.department?.name || 'No Department'} • {member.email}
-                          </p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
-                            {member.bragCount}
+                            : 'bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                            }`}
+                        >
+                          <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 text-white font-bold text-lg flex-shrink-0">
+                            {member.name.charAt(0)}
                           </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {member.bragCount === 1 ? 'post' : 'posts'}
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-bold text-gray-900 dark:text-white truncate">{member.name}</h4>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                              {member.department?.name || 'No Department'} • {member.email}
+                            </p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                              {member.bragCount}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              {member.bragCount === 1 ? 'post' : 'posts'}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
                 );
               })()}
             </div>
