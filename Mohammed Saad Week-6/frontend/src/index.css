@@ -1,0 +1,19 @@
+/* In frontend/src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+@import "tailwindcss";
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: "Poppins", sans-serif;
+    min-height: 100vh;
+    margin: 0;
+    
+    /* === ADDED FOR DARK THEME === */
+    background-color: #1a1a2e; /* Deep dark blue/purple */
+    color: #f0f0f0; /* Light text for contrast */
+}
