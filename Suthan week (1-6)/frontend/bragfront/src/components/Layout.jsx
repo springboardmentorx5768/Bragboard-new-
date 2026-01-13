@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { FaHome, FaUser, FaBuilding, FaSignOutAlt, FaMoon, FaSun, FaBullhorn, FaBell, FaCheck, FaTrash } from 'react-icons/fa';
+import { FaHome, FaUser, FaBuilding, FaSignOutAlt, FaMoon, FaSun, FaBullhorn, FaBell, FaCheck, FaTrash, FaAdjust } from 'react-icons/fa';
 
 const Layout = () => {
     const navigate = useNavigate();
@@ -35,6 +35,8 @@ const Layout = () => {
     useEffect(() => {
         const savedTheme = localStorage.getItem('theme') || 'light';
         setTheme(savedTheme);
+
+        // Apply dark mode class
         if (savedTheme === 'dark') {
             document.documentElement.classList.add('dark');
         } else {
@@ -42,7 +44,7 @@ const Layout = () => {
         }
     }, []);
 
-    // Toggle theme
+    // Toggle theme (light/dark)
     const toggleTheme = () => {
         const newTheme = theme === 'light' ? 'dark' : 'light';
         setTheme(newTheme);
@@ -54,6 +56,7 @@ const Layout = () => {
             document.documentElement.classList.remove('dark');
         }
     };
+
 
     const handleLogout = () => {
         localStorage.removeItem('token');
@@ -107,6 +110,10 @@ const Layout = () => {
                 }
             };
             fetchShoutoutsCount();
+
+            // Listen for shoutout view events
+            window.addEventListener('shoutoutViewed', fetchShoutoutsCount);
+            return () => window.removeEventListener('shoutoutViewed', fetchShoutoutsCount);
         }
     }, [location.pathname, token]);
 
@@ -163,6 +170,25 @@ const Layout = () => {
             setUnreadNotifCount(0);
         } catch (error) {
             console.error("Failed to mark all read", error);
+        }
+    };
+
+    const deleteNotification = async (id, e) => {
+        e.stopPropagation(); // Prevent marking as read when deleting
+        try {
+            await fetch(`/api/notifications/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            // Remove from local state
+            setNotifications(prev => prev.filter(n => n.id !== id));
+            // Update unread count if it was unread
+            const wasUnread = notifications.find(n => n.id === id)?.is_read === 'false' || !notifications.find(n => n.id === id)?.is_read;
+            if (wasUnread) {
+                setUnreadNotifCount(prev => Math.max(0, prev - 1));
+            }
+        } catch (error) {
+            console.error("Failed to delete notification", error);
         }
     };
 
@@ -226,25 +252,27 @@ const Layout = () => {
 
                     </div>
 
-                    {/* Theme Toggle - Only show when expanded */}
+                    {/* Theme Toggles - Only show when expanded */}
                     {isSidebarExpanded && (
-                        <button
-                            onClick={toggleTheme}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl transition-colors text-sm font-medium"
-                            title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-                        >
-                            {theme === 'light' ? (
-                                <>
-                                    <FaMoon className="text-indigo-600" />
-                                    <span>Dark Mode</span>
-                                </>
-                            ) : (
-                                <>
-                                    <FaSun className="text-yellow-400" />
-                                    <span>Light Mode</span>
-                                </>
-                            )}
-                        </button>
+                        <div className="space-y-2">
+                            <button
+                                onClick={toggleTheme}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl transition-colors text-sm font-medium"
+                                title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+                            >
+                                {theme === 'light' ? (
+                                    <>
+                                        <FaMoon className="text-indigo-600" />
+                                        <span>Dark Mode</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <FaSun className="text-yellow-400" />
+                                        <span>Light Mode</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     )}
                 </div>
 
@@ -357,17 +385,16 @@ const Layout = () => {
                                         notifications.map(notif => (
                                             <div
                                                 key={notif.id}
-                                                className={`p-4 flex gap-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer ${notif.is_read === 'false' || !notif.is_read ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : ''}`}
-                                                onClick={() => markAsRead(notif.id)}
+                                                className={`p-4 flex gap-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50 group relative ${notif.is_read === 'false' || !notif.is_read ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : ''}`}
                                             >
-                                                <div className="flex-shrink-0">
+                                                <div className="flex-shrink-0" onClick={() => markAsRead(notif.id)}>
                                                     <img
                                                         src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${notif.actor_id || 'sys'}`}
                                                         alt="User"
-                                                        className="w-10 h-10 rounded-full bg-gray-200"
+                                                        className="w-10 h-10 rounded-full bg-gray-200 cursor-pointer"
                                                     />
                                                 </div>
-                                                <div className="flex-1 min-w-0">
+                                                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => markAsRead(notif.id)}>
                                                     <p className="text-sm text-gray-800 dark:text-gray-200">
                                                         <span className="font-bold">{notif.actor?.name || 'Someone'}</span> {notif.message}
                                                     </p>
@@ -375,11 +402,18 @@ const Layout = () => {
                                                         {new Date(notif.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                                     </p>
                                                 </div>
-                                                {(!notif.is_read || notif.is_read === 'false') && (
-                                                    <div className="flex-shrink-0 self-center">
+                                                <div className="flex-shrink-0 self-center flex items-center gap-2">
+                                                    {(!notif.is_read || notif.is_read === 'false') && (
                                                         <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
-                                                    </div>
-                                                )}
+                                                    )}
+                                                    <button
+                                                        onClick={(e) => deleteNotification(notif.id, e)}
+                                                        className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-full transition-all text-red-500 hover:text-red-600"
+                                                        title="Delete notification"
+                                                    >
+                                                        <FaTrash className="text-xs" />
+                                                    </button>
+                                                </div>
                                             </div>
                                         ))
                                     )}

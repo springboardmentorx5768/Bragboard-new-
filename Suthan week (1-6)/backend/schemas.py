@@ -109,13 +109,18 @@ class CommentBase(BaseModel):
 
 class CommentCreate(CommentBase):
     shoutout_id: int
+    parent_id: Optional[int] = None
 
 class CommentResponse(CommentBase):
     id: int
     shoutout_id: int
     user_id: int
+    parent_id: Optional[int] = None
     user: Optional[UserResponse] = None
+    replies: List['CommentResponse'] = []
     created_at: Optional[datetime] = None
+    reaction_counts: dict = {}
+    current_user_reaction: Optional[ReactionType] = None
 
     class Config:
         orm_mode = True
@@ -129,6 +134,23 @@ class ReactionCreate(ReactionBase):
 
 class ReactionResponse(ReactionBase):
     id: int
+    shoutout_id: int
+    user_id: int
+
+    class Config:
+        orm_mode = True
+
+# Comment Reaction Schemas
+class CommentReactionBase(BaseModel):
+    type: ReactionType
+
+class CommentReactionCreate(CommentReactionBase):
+    comment_id: int
+    shoutout_id: int
+
+class CommentReactionResponse(CommentReactionBase):
+    id: int
+    comment_id: int
     shoutout_id: int
     user_id: int
 

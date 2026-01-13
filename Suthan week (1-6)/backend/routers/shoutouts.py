@@ -36,7 +36,27 @@ def enrich_shoutout(shoutout: models.ShoutOut, current_user_id: int):
     shoutout.current_user_reactions = user_reactions
     return shoutout
 
-# ... existing code ...
+def enrich_comment(comment: models.Comment, current_user_id: int):
+    """Process comment reactions to add count and user status"""
+    counts = {}
+    user_reaction = None
+    
+    if comment.reactions:
+        for r in comment.reactions:
+            r_type = r.type.value if hasattr(r.type, 'value') else r.type
+            counts[r_type] = counts.get(r_type, 0) + 1
+            if r.user_id == current_user_id:
+                user_reaction = r_type
+    
+    comment.reaction_counts = counts
+    comment.current_user_reaction = user_reaction
+    
+    # Recursively enrich replies
+    if hasattr(comment, 'replies') and comment.replies:
+        for reply in comment.replies:
+            enrich_comment(reply, current_user_id)
+            
+    return comment
 
 @router.post("/{id}/react", response_model=schemas.ShoutOutResponse)
 def react_to_shoutout(
@@ -45,32 +65,46 @@ def react_to_shoutout(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """Toggle reaction: Add if not exists, Remove if exists. Supports multiple types."""
+    """Toggle or update reaction: Add if not exists, update type if exists with different type, remove if same type."""
     shoutout = db.query(models.ShoutOut).filter(models.ShoutOut.id == id).first()
     if not shoutout:
         raise HTTPException(status_code=404, detail="Shoutout not found")
-        
-    # Check for THIS specific reaction type from this user
+
+    # Check for any existing reaction from this user on this shoutout
     existing_reaction = db.query(models.Reaction).filter(
         models.Reaction.shoutout_id == id,
-        models.Reaction.user_id == current_user.id,
-        models.Reaction.type == reaction_data.type
+        models.Reaction.user_id == current_user.id
     ).first()
-    
+
     if existing_reaction:
-        # If exists, remove it (toggle off)
-        db.delete(existing_reaction)
+        if existing_reaction.type == reaction_data.type:
+            # Same type, remove it (toggle off)
+            db.delete(existing_reaction)
+        else:
+            # Different type, update to new type
+            existing_reaction.type = reaction_data.type
     else:
-        # If not exists, add it (toggle on)
+        # No existing reaction, add new one
         new_reaction = models.Reaction(
             shoutout_id=id,
             user_id=current_user.id,
             type=reaction_data.type
         )
         db.add(new_reaction)
-        
+
+        # Create Notification for the Shoutout Sender
+        if shoutout.sender_id != current_user.id:
+            notification = models.Notification(
+                recipient_id=shoutout.sender_id,
+                actor_id=current_user.id,
+                type='reaction',
+                message=f"reacted to your shoutout with {reaction_data.type.value if hasattr(reaction_data.type, 'value') else reaction_data.type}",
+                reference_id=shoutout.id
+            )
+            db.add(notification)
+
     db.commit()
-    
+
     # Reload and return updated shoutout
     updated_shoutout = get_shoutout_query(db).filter(models.ShoutOut.id == id).first()
     return enrich_shoutout(updated_shoutout, current_user.id)
@@ -243,57 +277,117 @@ def delete_shoutout(
     if not shoutout:
         raise HTTPException(status_code=404, detail="Shoutout not found")
     
-    # Allow deletion if user is sender OR admin (optional, sticking to sender for now)
-    if shoutout.sender_id != current_user.id:
+    if shoutout.sender_id != current_user.id and current_user.role != models.UserRole.admin:
         raise HTTPException(status_code=403, detail="Not authorized to delete this post")
     
     db.delete(shoutout)
     db.commit()
 
-@router.post("/{id}/react", response_model=schemas.ShoutOutResponse)
-def react_to_shoutout(
+# --- Comments ---
+
+@router.get("/{id}/comments", response_model=List[schemas.CommentResponse])
+def get_comments(
     id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    # Fetch only top-level comments (no parent)
+    comments = db.query(models.Comment).filter(
+        models.Comment.shoutout_id == id,
+        models.Comment.parent_id == None
+    ).options(
+        joinedload(models.Comment.user),
+        joinedload(models.Comment.reactions),
+        joinedload(models.Comment.replies).joinedload(models.Comment.user),
+        joinedload(models.Comment.replies).joinedload(models.Comment.reactions)
+    ).order_by(models.Comment.created_at.asc()).all()
+    
+    return [enrich_comment(c, current_user.id) for c in comments]
+
+@router.post("/{id}/comments", response_model=schemas.CommentResponse)
+def create_comment(
+    id: int,
+    comment: schemas.CommentCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    shoutout = db.query(models.ShoutOut).filter(models.ShoutOut.id == id).first()
+    if not shoutout:
+        raise HTTPException(status_code=404, detail="Shoutout not found")
+    
+    new_comment = models.Comment(
+        shoutout_id=id,
+        user_id=current_user.id,
+        content=comment.content,
+        parent_id=comment.parent_id
+    )
+    db.add(new_comment)
+    db.commit()
+    db.refresh(new_comment)
+    
+    # Reload to get user and relationships
+    new_comment = db.query(models.Comment).filter(models.Comment.id == new_comment.id).options(
+        joinedload(models.Comment.user),
+        joinedload(models.Comment.reactions)
+    ).first()
+    return enrich_comment(new_comment, current_user.id)
+
+@router.post("/{id}/comments/{comment_id}/react", response_model=schemas.CommentResponse)
+def react_to_comment(
+    id: int,
+    comment_id: int,
     reaction_data: schemas.ReactionBase,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """Toggle reaction: Add if not exists, Remove if exists. Supports multiple types."""
-    shoutout = db.query(models.ShoutOut).filter(models.ShoutOut.id == id).first()
-    if not shoutout:
-        raise HTTPException(status_code=404, detail="Shoutout not found")
-        
-    # Check for THIS specific reaction type from this user
-    existing_reaction = db.query(models.Reaction).filter(
-        models.Reaction.shoutout_id == id,
-        models.Reaction.user_id == current_user.id,
-        models.Reaction.type == reaction_data.type
+    """Toggle or update reaction for a comment."""
+    comment = db.query(models.Comment).filter(models.Comment.id == comment_id, models.Comment.shoutout_id == id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    existing_reaction = db.query(models.CommentReaction).filter(
+        models.CommentReaction.comment_id == comment_id,
+        models.CommentReaction.user_id == current_user.id
     ).first()
-    
+
     if existing_reaction:
-        # If exists, remove it (toggle off)
-        db.delete(existing_reaction)
+        if existing_reaction.type == reaction_data.type:
+            db.delete(existing_reaction)
+        else:
+            existing_reaction.type = reaction_data.type
     else:
-        # If not exists, add it (toggle on)
-        new_reaction = models.Reaction(
+        new_reaction = models.CommentReaction(
+            comment_id=comment_id,
             shoutout_id=id,
             user_id=current_user.id,
             type=reaction_data.type
         )
         db.add(new_reaction)
 
-        # Create Notification for the Shoutout Sender
-        if shoutout.sender_id != current_user.id:
-            notification = models.Notification(
-                recipient_id=shoutout.sender_id,
-                actor_id=current_user.id,
-                type='reaction',
-                message=f"reacted to your shoutout with {reaction_data.type}",
-                reference_id=shoutout.id
-            )
-            db.add(notification)
-        
     db.commit()
-    
-    # Reload and return updated shoutout
-    updated_shoutout = get_shoutout_query(db).filter(models.ShoutOut.id == id).first()
-    return enrich_shoutout(updated_shoutout, current_user.id)
+
+    # Reload and return enriched comment
+    updated_comment = db.query(models.Comment).filter(models.Comment.id == comment_id).options(
+        joinedload(models.Comment.user),
+        joinedload(models.Comment.reactions),
+        joinedload(models.Comment.replies).joinedload(models.Comment.user),
+        joinedload(models.Comment.replies).joinedload(models.Comment.reactions)
+    ).first()
+    return enrich_comment(updated_comment, current_user.id)
+
+@router.delete("/{id}/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_comment(
+    id: int,
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    comment = db.query(models.Comment).filter(models.Comment.id == comment_id, models.Comment.shoutout_id == id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+        
+    if comment.user_id != current_user.id and current_user.role != models.UserRole.admin:
+         raise HTTPException(status_code=403, detail="Not authorized")
+         
+    db.delete(comment)
+    db.commit()

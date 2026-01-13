@@ -1,5 +1,5 @@
-from sqlalchemy import Column, Integer, String, Text, Enum, TIMESTAMP, ForeignKey, Table
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Text, Enum, TIMESTAMP, ForeignKey, Table, UniqueConstraint
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
 from database import Base
 import enum
@@ -47,6 +47,7 @@ class ReactionType(str, enum.Enum):
     like = "like"
     clap = "clap"
     star = "star"
+    dislike = "dislike"
 
 class ShoutOut(Base):
     __tablename__ = "shoutouts"
@@ -63,6 +64,7 @@ class ShoutOut(Base):
     recipients = relationship("ShoutOutRecipient", back_populates="shoutout", cascade="all, delete-orphan")
     comments = relationship("Comment", back_populates="shoutout", cascade="all, delete-orphan")
     reactions = relationship("Reaction", back_populates="shoutout", cascade="all, delete-orphan")
+    comment_reactions = relationship("CommentReaction", back_populates="shoutout", cascade="all, delete-orphan")
 
 class ShoutOutRecipient(Base):
     __tablename__ = "shoutout_recipients"
@@ -81,11 +83,14 @@ class Comment(Base):
     id = Column(Integer, primary_key=True, index=True)
     shoutout_id = Column(Integer, ForeignKey("shoutouts.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    parent_id = Column(Integer, ForeignKey("comments.id"), nullable=True)
     content = Column(Text, nullable=False)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
     shoutout = relationship("ShoutOut", back_populates="comments")
     user = relationship("User", foreign_keys=[user_id])
+    parent = relationship("Comment", remote_side=[id], backref=backref("replies", cascade="all, delete-orphan"))
+    reactions = relationship("CommentReaction", back_populates="comment", cascade="all, delete-orphan")
 
 class Reaction(Base):
     __tablename__ = "reactions"
@@ -97,6 +102,10 @@ class Reaction(Base):
 
     shoutout = relationship("ShoutOut", back_populates="reactions")
     user = relationship("User", foreign_keys=[user_id])
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'shoutout_id', name='unique_user_shoutout_reaction'),
+    )
 
 class Report(Base):
     __tablename__ = "reports"
@@ -136,3 +145,22 @@ class Notification(Base):
 
     recipient = relationship("User", foreign_keys=[recipient_id])
     actor = relationship("User", foreign_keys=[actor_id])
+
+class CommentReaction(Base):
+    __tablename__ = "comment_reactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    comment_id = Column(Integer, ForeignKey("comments.id"), nullable=False)
+    shoutout_id = Column(Integer, ForeignKey("shoutouts.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    type = Column(Enum(ReactionType), nullable=False) # Reuse ReactionType (like, clap, star) but user asked for like/dislike. Let's add dislike to ReactionType or use custom.
+    # User specifically asked for like and dislike counts in comments.
+    # Let's check ReactionType.
+
+    comment = relationship("Comment", back_populates="reactions")
+    shoutout = relationship("ShoutOut", back_populates="comment_reactions")
+    user = relationship("User", foreign_keys=[user_id])
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'comment_id', name='unique_user_comment_reaction'),
+    )

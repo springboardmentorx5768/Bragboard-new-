@@ -1,9 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { FaTrophy, FaUsers, FaPlus, FaArrowRight, FaTimes, FaTrash, FaRocket, FaGhost, FaSmileWink, FaStar, FaRunning, FaChild, FaLaptop } from 'react-icons/fa';
+import { FaTrophy, FaUsers, FaPlus, FaArrowRight, FaTimes, FaTrash, FaRocket, FaGhost, FaSmileWink, FaStar, FaRunning, FaChild, FaLaptop, FaRegCommentDots } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import CreatePostModal from '../components/CreatePostModal';
-import ReactionButton from '../components/ReactionButton';
+import ReactionButton, { ReactionBar } from '../components/ReactionButton';
+import CommentSection from '../components/CommentSection';
+import ShoutoutDetailModal from '../components/ShoutoutDetailModal';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -23,6 +25,16 @@ const Dashboard = () => {
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState(null);
   // shoutouts removed
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [activeComments, setActiveComments] = useState({});
+  const [currentUser, setCurrentUser] = useState(null);
+  const [selectedShoutout, setSelectedShoutout] = useState(null);
+
+  const toggleComments = (shoutoutId) => {
+    setActiveComments(prev => ({
+      ...prev,
+      [shoutoutId]: !prev[shoutoutId]
+    }));
+  };
 
   const token = localStorage.getItem('token');
 
@@ -74,6 +86,7 @@ const Dashboard = () => {
 
       if (userData) {
         setCurrentUserId(userData.id);
+        setCurrentUser(userData);
         setCurrentUserDepartment(userData.department);
       }
 
@@ -423,7 +436,8 @@ const Dashboard = () => {
                 recentActivity.slice(0, 2).map((activity, idx) => (
                   <div
                     key={activity.id}
-                    className={`p-6 transition-all hover:bg-gray-50 dark:hover:bg-gray-700/30 group relative animate-fade-in-up hover-glow ${idx < 3 ? `animation-delay-${(idx + 1) * 100}` : ''}`}
+                    className={`p-6 transition-all hover:bg-gray-50 dark:hover:bg-gray-700/30 group relative animate-fade-in-up hover-glow cursor-pointer ${idx < 3 ? `animation-delay-${(idx + 1) * 100}` : ''}`}
+                    onClick={() => setSelectedShoutout(activity)}
                   >
                     {/* Delete Button for Owner */}
                     {activity.senderId === currentUserId && (
@@ -472,16 +486,39 @@ const Dashboard = () => {
                         <p className="text-xs font-semibold text-gray-400 mt-2 flex items-center gap-1">
                           {activity.displayTime}
                         </p>
-                        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                          <ReactionButton
-                            shoutoutId={activity.id}
-                            counts={activity.reaction_counts}
-                            userReactions={activity.current_user_reactions}
-                            onReact={handleReaction}
-                          />                 </div>
+                        <div className="mt-4">
+                          <ReactionBar counts={activity.reaction_counts} />
+
+                          <div className="pt-2 border-t border-gray-100 dark:border-gray-700 flex items-stretch justify-between">
+                            <div className="flex-1" onClick={(e) => e.stopPropagation()}>
+                              <ReactionButton
+                                shoutoutId={activity.shoutId}
+                                userReactions={activity.current_user_reactions}
+                                onReact={handleReaction}
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleComments(activity.shoutId); }}
+                                className="w-full py-2 flex items-center justify-center gap-2 text-sm font-semibold text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded transition-colors"
+                              >
+                                <FaRegCommentDots className="text-xl" />
+                                <span className="hidden sm:inline">Comment</span>
+                              </button>
+                            </div>
+
+                          </div>
+
+                          {activeComments[activity.shoutId] && (
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <CommentSection shoutoutId={activity.shoutId} currentUser={currentUser} />
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
+
                 ))
               )}
             </div>
@@ -541,106 +578,119 @@ const Dashboard = () => {
       </div>
 
       {/* Leaderboard Modal */}
-      {showLeaderboard && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={() => {
-          setShowLeaderboard(false);
-          setSelectedDepartmentFilter(null);
-        }}>
-          <div className="bg-white dark:bg-gray-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden transform transition-all animate-scale-in" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gradient-to-r from-indigo-600 to-purple-600">
-              <div className="flex items-center gap-3">
-                <FaTrophy className="text-yellow-300 text-2xl" />
-                <h3 className="text-xl font-bold text-white">Overall Team Members</h3>
-              </div>
-              <button onClick={() => {
-                setShowLeaderboard(false);
-                setSelectedDepartmentFilter(null);
-              }} className="text-white hover:text-gray-200 transition-colors">
-                <FaTimes />
-              </button>
-            </div>
-
-            {/* Department Filter */}
-            <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={() => setSelectedDepartmentFilter(null)}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${selectedDepartmentFilter === null
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
-                >
-                  All Departments
+      {
+        showLeaderboard && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={() => {
+            setShowLeaderboard(false);
+            setSelectedDepartmentFilter(null);
+          }}>
+            <div className="bg-white dark:bg-gray-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden transform transition-all animate-scale-in" onClick={(e) => e.stopPropagation()}>
+              <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gradient-to-r from-indigo-600 to-purple-600">
+                <div className="flex items-center gap-3">
+                  <FaTrophy className="text-yellow-300 text-2xl" />
+                  <h3 className="text-xl font-bold text-white">Overall Team Members</h3>
+                </div>
+                <button onClick={() => {
+                  setShowLeaderboard(false);
+                  setSelectedDepartmentFilter(null);
+                }} className="text-white hover:text-gray-200 transition-colors">
+                  <FaTimes />
                 </button>
-                {departments.map((dept) => (
+              </div>
+
+              {/* Department Filter */}
+              <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
-                    key={dept.id}
-                    onClick={() => setSelectedDepartmentFilter(dept.id)}
-                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${selectedDepartmentFilter === dept.id
+                    onClick={() => setSelectedDepartmentFilter(null)}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${selectedDepartmentFilter === null
                       ? 'bg-indigo-600 text-white'
                       : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                       }`}
                   >
-                    {dept.name}
+                    All Departments
                   </button>
-                ))}
+                  {departments.map((dept) => (
+                    <button
+                      key={dept.id}
+                      onClick={() => setSelectedDepartmentFilter(dept.id)}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${selectedDepartmentFilter === dept.id
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                    >
+                      {dept.name}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
-              {(() => {
-                const filteredData = selectedDepartmentFilter
-                  ? leaderboardData.filter(m => m.department?.id === selectedDepartmentFilter)
-                  : leaderboardData;
+              <div className="p-6 max-h-[70vh] overflow-y-auto">
+                {(() => {
+                  const filteredData = selectedDepartmentFilter
+                    ? leaderboardData.filter(m => m.department?.id === selectedDepartmentFilter)
+                    : leaderboardData;
 
-                if (filteredData.length === 0) {
+                  if (filteredData.length === 0) {
+                    return (
+                      <div className="text-center py-12 text-gray-400">
+                        <FaUsers className="text-5xl mx-auto mb-4 opacity-50" />
+                        <p>No team members{selectedDepartmentFilter ? ' in this department' : ''} yet</p>
+                      </div>
+                    );
+                  }
+
                   return (
-                    <div className="text-center py-12 text-gray-400">
-                      <FaUsers className="text-5xl mx-auto mb-4 opacity-50" />
-                      <p>No team members{selectedDepartmentFilter ? ' in this department' : ''} yet</p>
+                    <div className="space-y-3">
+                      {filteredData.map((member, index) => {
+                        return (
+                          <div
+                            key={member.id}
+                            className={`flex items-center gap-4 p-4 rounded-xl transition-all ${index < 3
+                              ? 'bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border-2 border-indigo-200 dark:border-indigo-700 transform hover:scale-[1.02]'
+                              : 'bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                              }`}
+                          >
+                            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 text-white font-bold text-lg flex-shrink-0">
+                              {member.name.charAt(0)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-bold text-gray-900 dark:text-white truncate">{member.name}</h4>
+                              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                                {member.department?.name || 'No Department'} • {member.email}
+                              </p>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                                {member.bragCount}
+                              </div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                {member.bragCount === 1 ? 'post' : 'posts'}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
-                }
-
-                return (
-                  <div className="space-y-3">
-                    {filteredData.map((member, index) => {
-                      return (
-                        <div
-                          key={member.id}
-                          className={`flex items-center gap-4 p-4 rounded-xl transition-all ${index < 3
-                            ? 'bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border-2 border-indigo-200 dark:border-indigo-700 transform hover:scale-[1.02]'
-                            : 'bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
-                            }`}
-                        >
-                          <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 text-white font-bold text-lg flex-shrink-0">
-                            {member.name.charAt(0)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-bold text-gray-900 dark:text-white truncate">{member.name}</h4>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                              {member.department?.name || 'No Department'} • {member.email}
-                            </p>
-                          </div>
-                          <div className="text-right flex-shrink-0">
-                            <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
-                              {member.bragCount}
-                            </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                              {member.bragCount === 1 ? 'post' : 'posts'}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
+                })()}
+              </div>
             </div>
           </div>
-        </div>
+        )
+      }
+
+      {/* Shoutout Detail Modal */}
+      {selectedShoutout && (
+        <ShoutoutDetailModal
+          shoutout={selectedShoutout}
+          currentUser={currentUser}
+          onClose={() => setSelectedShoutout(null)}
+          onReact={handleReaction}
+          onDelete={handleDeletePost}
+        />
       )}
-    </div>
+    </div >
   );
 };
 

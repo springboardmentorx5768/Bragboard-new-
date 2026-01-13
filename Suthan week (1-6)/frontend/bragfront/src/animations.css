@@ -357,6 +357,18 @@
     }
 }
 
+@keyframes particle-blast {
+    0% {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(var(--tx), var(--ty)) scale(0);
+        opacity: 0;
+    }
+}
+
 /* ============================================
    UTILITY CLASSES
    ============================================ */
@@ -424,6 +436,10 @@
 
 .animate-float-up-fade-out {
     animation: float-up-fade-out 0.8s ease-out forwards;
+}
+
+.animate-particle-blast {
+    animation: particle-blast 0.6s ease-out forwards;
 }
 
 /* Special Effects */

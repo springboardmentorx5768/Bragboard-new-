@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaArrowLeft, FaBullhorn, FaTrash } from 'react-icons/fa';
-import ReactionButton from '../components/ReactionButton';
+import { FaArrowLeft, FaBullhorn, FaTrash, FaRegCommentDots, FaRetweet, FaPaperPlane } from 'react-icons/fa';
+import ReactionButton, { ReactionBar } from '../components/ReactionButton';
+import CommentSection from '../components/CommentSection';
+import ShoutoutDetailModal from '../components/ShoutoutDetailModal';
 
 const DepartmentFeed = () => {
     const navigate = useNavigate();
@@ -10,8 +12,18 @@ const DepartmentFeed = () => {
     const [departments, setDepartments] = useState([]);
     const [colleagues, setColleagues] = useState([]);
     const [currentUserId, setCurrentUserId] = useState(null);
+    const [currentUser, setCurrentUser] = useState(null);
     const [filters, setFilters] = useState({ departmentId: '', senderId: '', dateFrom: '', dateTo: '' });
+    const [activeComments, setActiveComments] = useState({});
+    const [selectedShoutout, setSelectedShoutout] = useState(null);
     const token = localStorage.getItem('token');
+
+    const toggleComments = (shoutoutId) => {
+        setActiveComments(prev => ({
+            ...prev,
+            [shoutoutId]: !prev[shoutoutId]
+        }));
+    };
 
     useEffect(() => {
         const fetchData = async () => {
@@ -60,6 +72,7 @@ const DepartmentFeed = () => {
 
                 if (userData) {
                     setCurrentUserId(userData.id);
+                    setCurrentUser(userData);
                 }
 
                 if (deptData && Array.isArray(deptData)) {
@@ -278,7 +291,8 @@ const DepartmentFeed = () => {
                         shoutouts.map((activity, idx) => (
                             <div
                                 key={activity.id}
-                                className={`p-6 transition-all hover:bg-gray-50 dark:hover:bg-gray-700/30 group relative animate-fade-in-up hover-glow ${idx < 3 ? `animation-delay-${(idx + 1) * 100}` : ''}`}
+                                className={`p-6 transition-all hover:bg-gray-50 dark:hover:bg-gray-700/30 group relative animate-fade-in-up hover-glow cursor-pointer ${idx < 3 ? `animation-delay-${(idx + 1) * 100}` : ''}`}
+                                onClick={() => setSelectedShoutout(activity.shoutout || activity)}
                             >
                                 {/* Delete Button for Owner */}
                                 {activity.senderId === currentUserId && (
@@ -327,13 +341,35 @@ const DepartmentFeed = () => {
                                         <p className="text-xs font-semibold text-gray-400 mt-2 flex items-center gap-1">
                                             {activity.displayTime}
                                         </p>
-                                        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                                            <ReactionButton
-                                                shoutoutId={activity.shoutId}
-                                                counts={activity.reaction_counts}
-                                                userReactions={activity.current_user_reactions}
-                                                onReact={handleReaction}
-                                            />
+                                        {/* Footer / Actions */}
+                                        <div className="mt-4">
+                                            <ReactionBar counts={activity.reaction_counts} />
+
+                                            <div className="pt-2 border-t border-gray-100 dark:border-gray-700 flex items-stretch justify-between">
+                                                <div className="flex-1">
+                                                    <ReactionButton
+                                                        shoutoutId={activity.shoutId}
+                                                        userReactions={activity.current_user_reactions}
+                                                        onReact={handleReaction}
+                                                    />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); toggleComments(activity.shoutId); }}
+                                                        className="w-full py-2 flex items-center justify-center gap-2 text-sm font-semibold text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded transition-colors"
+                                                    >
+                                                        <FaRegCommentDots className="text-xl" />
+                                                        <span className="hidden sm:inline">Comment</span>
+                                                    </button>
+                                                </div>
+
+                                            </div>
+
+                                            {activeComments[activity.shoutId] && (
+                                                <div onClick={(e) => e.stopPropagation()}>
+                                                    <CommentSection shoutoutId={activity.shoutId} currentUser={currentUser} />
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -342,6 +378,15 @@ const DepartmentFeed = () => {
                     )}
                 </div>
             </div>
+            {selectedShoutout && (
+                <ShoutoutDetailModal
+                    shoutout={selectedShoutout}
+                    currentUser={currentUser}
+                    onClose={() => setSelectedShoutout(null)}
+                    onReact={handleReaction}
+                    onDelete={handleDeletePost}
+                />
+            )}
         </div>
     );
 };

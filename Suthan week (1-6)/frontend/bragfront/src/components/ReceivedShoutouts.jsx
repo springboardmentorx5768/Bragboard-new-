@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FaBullhorn, FaHeart } from 'react-icons/fa';
-import ShoutOutDetailModal from './ShoutOutDetailModal';
+import ShoutoutDetailModal from './ShoutoutDetailModal';
 import ReactionButton from './ReactionButton';
 
 const ReceivedShoutouts = () => {
@@ -227,10 +227,11 @@ const ReceivedShoutouts = () => {
 
             {/* Detail Modal */}
             {selectedShoutout && (
-                <ShoutOutDetailModal
+                <ShoutoutDetailModal
                     shoutout={selectedShoutout}
+                    currentUser={{ id: currentUserId }}
                     onClose={() => setSelectedShoutout(null)}
-                    onViewed={handleShoutoutViewed}
+                    onReact={handleReaction}
                 />
             )}
         </div>

@@ -32,8 +32,8 @@ const CreatePostModal = ({ onClose, onPostCreated, colleagues, departments = [] 
 
     const filteredColleagues = colleagues.filter(col => {
         const matchesSearch = col.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             col.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             col.user_id?.includes(searchTerm);
+            col.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            col.user_id?.includes(searchTerm);
         const matchesDepartment = !departmentFilter || col.department?.id?.toString() === departmentFilter;
         const notSelected = !selectedRecipients.find(r => r.id === col.id);
         return matchesSearch && matchesDepartment && notSelected;
@@ -101,18 +101,18 @@ const CreatePostModal = ({ onClose, onPostCreated, colleagues, departments = [] 
                 setTags('');
                 setImagePreview(null);
                 setSelectedRecipients([]);
-                
+
                 setShowSuccess(true);
                 setShowConfetti(true);
                 setRecycleConfetti(true); // Start recycling
-                
+
                 // Refresh feed after a short delay to ensure database commit is complete
                 if (onPostCreated) {
                     setTimeout(() => {
                         onPostCreated();
                     }, 500); // Small delay to ensure backend has committed
                 }
-                
+
                 // Close modal after showing success animation
                 setTimeout(() => {
                     onClose();
@@ -352,7 +352,10 @@ const CreatePostModal = ({ onClose, onPostCreated, colleagues, departments = [] 
                             Cancel
                         </button>
                         <button
-                            onClick={() => document.getElementById('postForm').requestSubmit()}
+                            onClick={() => {
+                                const form = document.getElementById('postForm');
+                                if (form) form.requestSubmit();
+                            }}
                             disabled={isSubmitting}
                             className="px-8 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-lg transition-all disabled:opacity-50"
                         >
