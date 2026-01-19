@@ -4,6 +4,9 @@ import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../auth/AuthContext";
 import { motion } from "framer-motion";
 import api from "../api";
+import { jsPDF } from "jspdf";
+import Papa from "papaparse";
+import Leaderboard from "./Leaderboard";
 import "./Dashboard.css";
 
 export default function Dashboard() {
@@ -25,6 +28,7 @@ export default function Dashboard() {
     name: "",
     email: "",
     department: "",
+    role: "",
   });
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState("");
@@ -44,6 +48,25 @@ export default function Dashboard() {
   });
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [commentInputs, setCommentInputs] = useState({});
+  const [showComments, setShowComments] = useState({});
+  const [commentLoading, setCommentLoading] = useState({});
+  const [showReactions, setShowReactions] = useState({});
+  const [topContributors, setTopContributors] = useState([]);
+  const [mostTagged, setMostTagged] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [reportedBrags, setReportedBrags] = useState([]);
+  const [reportStats, setReportStats] = useState(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportFormData, setReportFormData] = useState({ bragId: null, reason: '', description: '' });
+  const [reportError, setReportError] = useState("");
+  const [reportSuccess, setReportSuccess] = useState("");
+  const [reportLoading, setReportLoading] = useState(false);
+  const [showReportDetail, setShowReportDetail] = useState(false);
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [reportResolveData, setReportResolveData] = useState({ status: 'resolved', adminNotes: '' });
+
+
 
   useEffect(() => {
     if (!token) {
@@ -115,6 +138,58 @@ export default function Dashboard() {
         } catch (err) {
           console.warn("Feed brags not available:", err);
         }
+
+        // ALWAYS fetch admin data - for continuous user displaying
+        const fetchAdminData = async () => {
+          try {
+            console.log("Fetching admin data...");
+            const [contributorsResponse, taggedResponse, reportsResponse, reportStatsResponse] = await Promise.all([
+              api.get("/users/admin/top-contributors?limit=10").catch(err => {
+                console.error("Top contributors error:", err.response?.status, err.response?.data);
+                return { data: [] };
+              }),
+              api.get("/users/admin/most-tagged?limit=10").catch(err => {
+                console.error("Most tagged error:", err.response?.status, err.response?.data);
+                return { data: [] };
+              }),
+              api.get("/reports/admin?limit=50").catch(err => {
+                console.error("Reports error:", err.response?.status, err.response?.data);
+                return { data: [] };
+              }),
+              api.get("/users/admin/report-stats").catch(err => {
+                console.error("Report stats error:", err.response?.status, err.response?.data);
+                return { data: {} };
+              })
+            ]);
+            
+            console.log("Admin data fetched:", {
+              contributors: contributorsResponse.data,
+              tagged: taggedResponse.data,
+              reports: reportsResponse.data,
+              stats: reportStatsResponse.data
+            });
+            
+            setTopContributors(contributorsResponse.data || []);
+            setMostTagged(taggedResponse.data || []);
+            setReportedBrags(reportsResponse.data || []);
+            setReportStats(reportStatsResponse.data || {});
+          } catch (err) {
+            console.warn("Admin data fetch error:", err);
+          }
+        };
+        
+        // Fetch admin data immediately and also if user is admin
+        await fetchAdminData();
+        
+        // Verify user role
+        if (userResponse.data) {
+          console.log("User role:", userResponse.data.role);
+          if (userResponse.data.role === 'admin') {
+            console.log("User is admin - data already fetched");
+          } else {
+            console.log("User is not admin - still displaying admin data for all users");
+          }
+        }
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
       } finally {
@@ -125,6 +200,39 @@ export default function Dashboard() {
     fetchDashboardData();
   }, [token, navigate]);
 
+  // Continuously refresh admin data every 30 seconds
+  useEffect(() => {
+    const refreshAdminData = async () => {
+      try {
+        const [contributorsResponse, taggedResponse, reportsResponse, reportStatsResponse] = await Promise.all([
+          api.get("/users/admin/top-contributors?limit=10").catch(err => ({ data: [] })),
+          api.get("/users/admin/most-tagged?limit=10").catch(err => ({ data: [] })),
+          api.get("/reports/admin?limit=50").catch(err => ({ data: [] })),
+          api.get("/users/admin/report-stats").catch(err => ({ data: {} }))
+        ]);
+        
+        setTopContributors(contributorsResponse.data || []);
+        setMostTagged(taggedResponse.data || []);
+        setReportedBrags(reportsResponse.data || []);
+        setReportStats(reportStatsResponse.data || {});
+      } catch (err) {
+        console.warn("Periodic admin data refresh failed:", err);
+      }
+    };
+
+    // Refresh admin data every 30 seconds for continuous display
+    const interval = setInterval(refreshAdminData, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  // Load reports when admin tab is clicked
+  useEffect(() => {
+    if (activeTab === "admin" && user?.role === "admin") {
+      fetchReportedBrags();
+    }
+  }, [activeTab, user?.role]);
+
   // Initialize edit form when user data loads
   useEffect(() => {
     if (user && !isEditingProfile) {
@@ -132,6 +240,7 @@ export default function Dashboard() {
         name: user.name || "",
         email: user.email || "",
         department: user.department || "",
+        role: user.role || "employee",
       });
     }
   }, [user, isEditingProfile]);
@@ -201,6 +310,7 @@ export default function Dashboard() {
         name: user.name || "",
         email: user.email || "",
         department: user.department || "",
+        role: user.role || "employee",
       });
     }
   };
@@ -322,6 +432,61 @@ export default function Dashboard() {
     }
   };
 
+  const handleAddComment = async (bragId) => {
+    const content = commentInputs[bragId]?.trim();
+    if (!content) return;
+
+    setCommentLoading(prev => ({ ...prev, [bragId]: true }));
+    try {
+      await api.post(`/brags/${bragId}/comments`, { content });
+      
+      // Clear input
+      setCommentInputs(prev => ({ ...prev, [bragId]: '' }));
+      
+      // Refresh the brags
+      const bragsResponse = await api.get("/brags/my");
+      setUserBrags(bragsResponse.data || []);
+      
+      // Refresh feed if needed
+      if (activeTab === 'feed') {
+        fetchFeedBrags(feedFilters);
+      }
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      alert('Failed to add comment. Please try again.');
+    } finally {
+      setCommentLoading(prev => ({ ...prev, [bragId]: false }));
+    }
+  };
+
+  const handleDeleteComment = async (bragId, commentId) => {
+    if (!confirm('Are you sure you want to delete this comment?')) return;
+
+    try {
+      await api.delete(`/brags/${bragId}/comments/${commentId}`);
+      
+      // Refresh the brags
+      const bragsResponse = await api.get("/brags/my");
+      setUserBrags(bragsResponse.data || []);
+      
+      // Refresh feed if needed
+      if (activeTab === 'feed') {
+        fetchFeedBrags(feedFilters);
+      }
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      alert('Failed to delete comment. Please try again.');
+    }
+  };
+
+  const toggleComments = (bragId) => {
+    setShowComments(prev => ({ ...prev, [bragId]: !prev[bragId] }));
+  };
+
+  const toggleReactions = (bragId) => {
+    setShowReactions(prev => ({ ...prev, [bragId]: !prev[bragId] }));
+  };
+
   const fetchFeedBrags = async (filters = {}) => {
     setFeedLoading(true);
     try {
@@ -398,6 +563,228 @@ export default function Dashboard() {
     navigate("/login");
   };
 
+  // Report handling functions
+  const handleReportBrag = async (bragId) => {
+    setShowReportModal(true);
+    setReportFormData({ bragId, reason: '', description: '' });
+    setReportError("");
+  };
+
+  const submitReport = async () => {
+    if (!reportFormData.reason.trim()) {
+      setReportError("Please select a reason");
+      setReportLoading(false);
+      return;
+    }
+
+    if (!reportFormData.bragId) {
+      setReportError("Invalid brag ID");
+      setReportLoading(false);
+      return;
+    }
+
+    setReportLoading(true);
+    setReportError("");
+    setReportSuccess("");
+
+    try {
+      console.log("Submitting report for brag:", reportFormData.bragId);
+      console.log("Report data:", {
+        reason: reportFormData.reason,
+        description: reportFormData.description || ""
+      });
+
+      const response = await api.post(`/brags/${reportFormData.bragId}/reports`, {
+        reason: reportFormData.reason,
+        description: reportFormData.description || ""
+      });
+
+      console.log("Report submitted successfully:", response.data);
+
+      // Show success message
+      setReportSuccess("Report submitted successfully! Thank you for helping keep our community safe.");
+      
+      // Reset form
+      setReportFormData({ bragId: null, reason: '', description: '' });
+      setReportLoading(false);
+      
+      // Close modal after 2 seconds to show success message
+      setTimeout(() => {
+        setShowReportModal(false);
+        setReportSuccess("");
+      }, 2000);
+
+      // Refresh admin reports if viewing admin tab
+      if (activeTab === "admin") {
+        try {
+          const reportsResponse = await api.get("/reports/admin?limit=50");
+          setReportedBrags(reportsResponse.data || []);
+          console.log("Reports refreshed:", reportsResponse.data);
+        } catch (err) {
+          console.warn("Could not refresh reports:", err);
+        }
+      }
+
+      // Also refresh the feed to remove/update the reported brag
+      try {
+        await fetchFeedBrags();
+      } catch (err) {
+        console.warn("Could not refresh feed:", err);
+      }
+
+    } catch (error) {
+      console.error("Report submission error:", error);
+      console.error("Error response:", error.response?.data);
+      const errorMessage = error.response?.data?.detail || error.response?.data?.message || "Failed to submit report";
+      setReportError(errorMessage);
+      setReportLoading(false);
+    }
+  };
+
+  const fetchReportedBrags = async () => {
+    try {
+      console.log("Fetching reported brags...");
+      const response = await api.get("/reports/admin?limit=50");
+      console.log("Fetched reports:", response.data);
+      setReportedBrags(response.data || []);
+    } catch (error) {
+      console.error("Error fetching reports:", error);
+      setReportedBrags([]); // Set empty array on error
+    }
+  };
+
+  const handleResolveReport = async () => {
+    setReportLoading(true);
+    try {
+      await api.put(`/reports/${selectedReport.id}`, {
+        status: reportResolveData.status,
+        resolution_notes: reportResolveData.adminNotes
+      });
+      
+      setShowReportDetail(false);
+      setSelectedReport(null);
+      await fetchReportedBrags();
+      alert("Report resolved successfully");
+    } catch (error) {
+      console.error("Error resolving report:", error);
+      alert("Failed to resolve report");
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  // Export functions for reports
+  const exportReportsAsCSV = () => {
+    if (!reportedBrags || reportedBrags.length === 0) {
+      alert("No reports to export");
+      return;
+    }
+
+    const csvData = reportedBrags.map(report => ({
+      "Report ID": report.id,
+      "Reporter": report.reported_by?.name || "Unknown",
+      "Reporter Email": report.reported_by?.email || "N/A",
+      "Reason": report.reason,
+      "Status": report.status,
+      "Description": report.description || "",
+      "Created Date": new Date(report.created_at).toLocaleString(),
+      "Resolved Date": report.resolved_at ? new Date(report.resolved_at).toLocaleString() : "N/A",
+      "Resolved By": report.resolved_by?.name || "N/A",
+      "Admin Notes": report.resolution_notes || ""
+    }));
+
+    const csv = Papa.unparse(csvData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `reports_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportReportsAsPDF = () => {
+    if (!reportedBrags || reportedBrags.length === 0) {
+      alert("No reports to export");
+      return;
+    }
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let yPosition = 10;
+
+    // Title
+    doc.setFontSize(18);
+    doc.text("Reported Shout-outs Report", pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 10;
+
+    // Date
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 8;
+
+    // Summary
+    doc.setFontSize(12);
+    doc.text("Summary", 10, yPosition);
+    yPosition += 6;
+    doc.setFontSize(10);
+    doc.text(`Total Reports: ${reportStats?.total_reports || 0}`, 15, yPosition);
+    yPosition += 5;
+    doc.text(`Pending: ${reportStats?.pending_reports || 0}`, 15, yPosition);
+    yPosition += 5;
+    doc.text(`Resolved: ${reportStats?.resolved_reports || 0}`, 15, yPosition);
+    yPosition += 5;
+    doc.text(`Dismissed: ${reportStats?.dismissed_reports || 0}`, 15, yPosition);
+    yPosition += 10;
+
+    // Reports Details
+    doc.setFontSize(12);
+    doc.text("Reports Details", 10, yPosition);
+    yPosition += 8;
+
+    reportedBrags.forEach((report, index) => {
+      if (yPosition > pageHeight - 20) {
+        doc.addPage();
+        yPosition = 10;
+      }
+
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'bold');
+      doc.text(`Report #${index + 1}`, 10, yPosition);
+      yPosition += 5;
+
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(9);
+      const reportDetails = [
+        `ID: ${report.id}`,
+        `Reporter: ${report.reported_by?.name || 'Unknown'}`,
+        `Reason: ${report.reason}`,
+        `Status: ${report.status}`,
+        `Created: ${new Date(report.created_at).toLocaleString()}`,
+        `Description: ${report.description || 'N/A'}`,
+        `Admin Notes: ${report.resolution_notes || 'N/A'}`
+      ];
+
+      reportDetails.forEach(detail => {
+        if (yPosition > pageHeight - 10) {
+          doc.addPage();
+          yPosition = 10;
+        }
+        doc.text(detail, 15, yPosition);
+        yPosition += 4;
+      });
+
+      yPosition += 3;
+    });
+
+    doc.save(`reports_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
   if (loading) {
     return (
       <div className="dashboard-loading">
@@ -453,12 +840,28 @@ export default function Dashboard() {
             📰 Feed
           </motion.button>
           <motion.button
+            className={`nav-item ${activeTab === "leaderboard" ? "active" : ""}`}
+            onClick={() => setActiveTab("leaderboard")}
+            whileHover={{ x: 5 }}
+          >
+            🏆 Leaderboard
+          </motion.button>
+          <motion.button
             className={`nav-item ${activeTab === "profile" ? "active" : ""}`}
             onClick={() => setActiveTab("profile")}
             whileHover={{ x: 5 }}
           >
             👤 Profile
           </motion.button>
+          {user?.role === 'admin' && (
+            <motion.button
+              className={`nav-item ${activeTab === "admin" ? "active" : ""}`}
+              onClick={() => setActiveTab("admin")}
+              whileHover={{ x: 5 }}
+            >
+              ⚙️ Admin Dashboard
+            </motion.button>
+          )}
         </nav>
 
         <div className="sidebar-footer">
@@ -859,6 +1262,13 @@ export default function Dashboard() {
                         </div>
                         <div className="brag-badge">🎉 Shout-out</div>
                         <button
+                          className="report-brag-btn"
+                          onClick={() => handleReportBrag(brag.id)}
+                          title="Report brag"
+                        >
+                          ⚠️
+                        </button>
+                        <button
                           className="delete-brag-btn"
                           onClick={() => handleDeleteBrag(brag.id)}
                           title="Delete brag"
@@ -895,21 +1305,21 @@ export default function Dashboard() {
                         </div>
                       )}
 
-                      <div className="brag-recipients">
-                        <div className="recipients-label">
-                          <span className="recipients-icon">👥</span>
-                          Tagged:
-                        </div>
-                        <div className="recipients-tags">
-                          {brag.recipients.map((recipient) => (
-                            <span key={recipient.id} className="recipient-tag">
-                              @{recipient.name} ({recipient.department})
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
                       <div className="brag-reactions">
+                        <div className="brag-recipients">
+                          <div className="recipients-label">
+                            <span className="recipients-icon">👥</span>
+                            Tagged:
+                          </div>
+                          <div className="recipients-tags">
+                            {brag.recipients.map((recipient) => (
+                              <span key={recipient.id} className="recipient-tag">
+                                @{recipient.name} ({recipient.department})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
                         <div className="reaction-buttons">
                           <button
                             className={`reaction-btn ${getUserReaction(brag.id) === 'like' ? 'active' : ''}`}
@@ -933,6 +1343,111 @@ export default function Dashboard() {
                             ⭐ {getReactionCount(brag.reactions, 'star')}
                           </button>
                         </div>
+
+                        <button
+                          className="reactions-toggle-btn"
+                          onClick={() => toggleReactions(brag.id)}
+                        >
+                          👀 Reactions ({brag.reactions?.length || 0})
+                        </button>
+
+                        <button
+                          className="comments-toggle-btn"
+                          onClick={() => toggleComments(brag.id)}
+                        >
+                          💬 Comments ({brag.comments?.length || 0})
+                        </button>
+                        
+                        {showReactions[brag.id] && (
+                          <div className="reactions-section">
+                            {brag.reactions && brag.reactions.length > 0 && (
+                              <div className="reactions-list">
+                                {brag.reactions.map((reaction) => (
+                                  <div key={reaction.id} className="reaction-item">
+                                    <div className="reaction-header">
+                                      <div className="reaction-avatar">
+                                        {reaction.user.name?.charAt(0) || "U"}
+                                      </div>
+                                      <div className="reaction-meta">
+                                        <span className="reaction-author">{reaction.user.name}</span>
+                                        <span className="reaction-type">
+                                          {reaction.reaction_type === 'like' ? '👍' : reaction.reaction_type === 'clap' ? '👏' : '⭐'}
+                                        </span>
+                                        <span className="reaction-date">
+                                          {new Date(reaction.created_at).toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="brag-comments">
+                        {showComments[brag.id] && (
+                          <div className="comments-section">
+                            {brag.comments && brag.comments.length > 0 && (
+                              <div className="comments-list">
+                                {brag.comments.map((comment) => (
+                                  <div key={comment.id} className="comment-item">
+                                    <div className="comment-header">
+                                      <div className="comment-avatar">
+                                        {comment.user.name?.charAt(0) || "U"}
+                                      </div>
+                                      <div className="comment-meta">
+                                        <span className="comment-author">{comment.user.name}</span>
+                                        <span className="comment-date">
+                                          {new Date(comment.created_at).toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </span>
+                                      </div>
+                                      {comment.user.id === user?.id && (
+                                        <button
+                                          className="delete-comment-btn"
+                                          onClick={() => handleDeleteComment(brag.id, comment.id)}
+                                          title="Delete comment"
+                                        >
+                                          🗑️
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div className="comment-content">{comment.content}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            
+                            <div className="add-comment">
+                              <textarea
+                                value={commentInputs[brag.id] || ''}
+                                onChange={(e) => setCommentInputs(prev => ({ ...prev, [brag.id]: e.target.value }))}
+                                placeholder="Add a comment..."
+                                className="comment-input"
+                                rows="2"
+                                maxLength="500"
+                              />
+                              <button
+                                className="comment-submit-btn"
+                                onClick={() => handleAddComment(brag.id)}
+                                disabled={!commentInputs[brag.id]?.trim() || commentLoading[brag.id]}
+                              >
+                                {commentLoading[brag.id] ? 'Posting...' : 'Comment'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   ))}
@@ -1091,25 +1606,17 @@ export default function Dashboard() {
                                   </div>
                                 </div>
                                 <div className="feed-brag-badge">🎉 Shout-out</div>
+                                <button
+                                  className="report-brag-btn"
+                                  onClick={() => handleReportBrag(brag.id)}
+                                  title="Report brag"
+                                >
+                                  ⚠️
+                                </button>
                               </div>
 
                               <div className="feed-brag-content">
                                 {brag.content}
-                              </div>
-
-                              
-                              <div className="feed-brag-recipients">
-                                <div className="feed-recipients-label">
-                                  <span className="recipients-icon">👥</span>
-                                  Tagged:
-                                </div>
-                                <div className="feed-recipients-tags">
-                                  {brag.recipients.map((recipient) => (
-                                    <span key={recipient.id} className="feed-recipient-tag">
-                                      @{recipient.name} ({recipient.department})
-                                    </span>
-                                  ))}
-                                </div>
                               </div>
 
                               {brag.attachments && brag.attachments.length > 0 && (
@@ -1137,6 +1644,20 @@ export default function Dashboard() {
                               )}
 
                               <div className="feed-brag-reactions">
+                                <div className="feed-brag-recipients">
+                                  <div className="feed-recipients-label">
+                                    <span className="recipients-icon">👥</span>
+                                    Tagged:
+                                  </div>
+                                  <div className="feed-recipients-tags">
+                                    {brag.recipients.map((recipient) => (
+                                      <span key={recipient.id} className="feed-recipient-tag">
+                                        @{recipient.name} ({recipient.department})
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+
                                 <div className="reaction-buttons">
                                   <button
                                     className={`reaction-btn ${getUserReaction(brag.id) === 'like' ? 'active' : ''}`}
@@ -1160,6 +1681,111 @@ export default function Dashboard() {
                                     ⭐ {getReactionCount(brag.reactions, 'star')}
                                   </button>
                                 </div>
+
+                                <button
+                                  className="reactions-toggle-btn"
+                                  onClick={() => toggleReactions(brag.id)}
+                                >
+                                  👀 Reactions ({brag.reactions?.length || 0})
+                                </button>
+
+                                <button
+                                  className="comments-toggle-btn"
+                                  onClick={() => toggleComments(brag.id)}
+                                >
+                                  💬 Comments ({brag.comments?.length || 0})
+                                </button>
+                                
+                                {showReactions[brag.id] && (
+                                  <div className="reactions-section">
+                                    {brag.reactions && brag.reactions.length > 0 && (
+                                      <div className="reactions-list">
+                                        {brag.reactions.map((reaction) => (
+                                          <div key={reaction.id} className="reaction-item">
+                                            <div className="reaction-header">
+                                              <div className="reaction-avatar">
+                                                {reaction.user.name?.charAt(0) || "U"}
+                                              </div>
+                                              <div className="reaction-meta">
+                                                <span className="reaction-author">{reaction.user.name}</span>
+                                                <span className="reaction-type">
+                                                  {reaction.reaction_type === 'like' ? '👍' : reaction.reaction_type === 'clap' ? '👏' : '⭐'}
+                                                </span>
+                                                <span className="reaction-date">
+                                                  {new Date(reaction.created_at).toLocaleDateString('en-US', {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                  })}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="feed-brag-comments">
+                                {showComments[brag.id] && (
+                                  <div className="comments-section">
+                                    {brag.comments && brag.comments.length > 0 && (
+                                      <div className="comments-list">
+                                        {brag.comments.map((comment) => (
+                                          <div key={comment.id} className="comment-item">
+                                            <div className="comment-header">
+                                              <div className="comment-avatar">
+                                                {comment.user.name?.charAt(0) || "U"}
+                                              </div>
+                                              <div className="comment-meta">
+                                                <span className="comment-author">{comment.user.name}</span>
+                                                <span className="comment-date">
+                                                  {new Date(comment.created_at).toLocaleDateString('en-US', {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                  })}
+                                                </span>
+                                              </div>
+                                              {comment.user.id === user?.id && (
+                                                <button
+                                                  className="delete-comment-btn"
+                                                  onClick={() => handleDeleteComment(brag.id, comment.id)}
+                                                  title="Delete comment"
+                                                >
+                                                  🗑️
+                                                </button>
+                                              )}
+                                            </div>
+                                            <div className="comment-content">{comment.content}</div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    
+                                    <div className="add-comment">
+                                      <textarea
+                                        value={commentInputs[brag.id] || ''}
+                                        onChange={(e) => setCommentInputs(prev => ({ ...prev, [brag.id]: e.target.value }))}
+                                        placeholder="Add a comment..."
+                                        className="comment-input"
+                                        rows="2"
+                                        maxLength="500"
+                                      />
+                                      <button
+                                        className="comment-submit-btn"
+                                        onClick={() => handleAddComment(brag.id)}
+                                        disabled={!commentInputs[brag.id]?.trim() || commentLoading[brag.id]}
+                                      >
+                                        {commentLoading[brag.id] ? 'Posting...' : 'Comment'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </motion.div>
                           ))}
@@ -1293,6 +1919,21 @@ export default function Dashboard() {
                       />
                     </div>
 
+                    {/* Role Field */}
+                    <div className="profile-form-group">
+                      <label className="profile-form-label">
+                        Role
+                      </label>
+                      <select
+                        value={editFormData.role}
+                        onChange={(e) => handleEditChange("role", e.target.value)}
+                        className="profile-form-input"
+                      >
+                        <option value="employee">Employee</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+
                     {/* Action Buttons */}
                     <div className="flex gap-3 pt-4">
                       <motion.button
@@ -1319,8 +1960,454 @@ export default function Dashboard() {
               )}
             </motion.div>
           )}
+
+          {/* LEADERBOARD TAB */}
+          {activeTab === "leaderboard" && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Leaderboard />
+            </motion.div>
+          )}
+
+          {/* ADMIN DASHBOARD TAB */}
+          {activeTab === "admin" && user?.role === "admin" && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="p-8"
+            >
+              <h3 className="section-title mb-8">Admin Dashboard ⚙️</h3>
+
+              <div className="admin-grid">
+                {/* Top Contributors Section */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="admin-section"
+                >
+                  <div className="admin-section-header">
+                    <h4 className="admin-section-title">🏆 Top Contributors</h4>
+                    <p className="admin-section-subtitle">Most active brag authors</p>
+                  </div>
+
+                  {adminLoading ? (
+                    <div className="loading-spinner"></div>
+                  ) : topContributors.length > 0 ? (
+                    <div className="contributors-list">
+                      {topContributors.map((contributor, index) => (
+                        <motion.div
+                          key={contributor.id}
+                          className="contributor-card"
+                          whileHover={{ scale: 1.02, x: 5 }}
+                        >
+                          <div className="contributor-rank">
+                            {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`}
+                          </div>
+                          <div className="contributor-avatar">
+                            {contributor.name?.charAt(0) || "U"}
+                          </div>
+                          <div className="contributor-info">
+                            <div className="contributor-name">{contributor.name}</div>
+                            <div className="contributor-dept">{contributor.department || "No Dept"}</div>
+                            <div className="contributor-email">{contributor.email}</div>
+                          </div>
+                          <div className="contributor-stat">
+                            <div className="stat-value">{contributor.brag_count}</div>
+                            <div className="stat-label">Brags</div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      <p>No contributors yet</p>
+                    </div>
+                  )}
+                </motion.div>
+
+                {/* Most Tagged Section */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className="admin-section"
+                >
+                  <div className="admin-section-header">
+                    <h4 className="admin-section-title">⭐ Most Tagged Users</h4>
+                    <p className="admin-section-subtitle">Most frequently recognized</p>
+                  </div>
+
+                  {adminLoading ? (
+                    <div className="loading-spinner"></div>
+                  ) : mostTagged.length > 0 ? (
+                    <div className="tagged-list">
+                      {mostTagged.map((user_item, index) => (
+                        <motion.div
+                          key={user_item.id}
+                          className="tagged-card"
+                          whileHover={{ scale: 1.02, x: 5 }}
+                        >
+                          <div className="tagged-rank">
+                            {index === 0 ? "⭐" : index === 1 ? "✨" : index === 2 ? "💫" : `#${index + 1}`}
+                          </div>
+                          <div className="tagged-avatar">
+                            {user_item.name?.charAt(0) || "U"}
+                          </div>
+                          <div className="tagged-info">
+                            <div className="tagged-name">{user_item.name}</div>
+                            <div className="tagged-dept">{user_item.department || "No Dept"}</div>
+                            <div className="tagged-email">{user_item.email}</div>
+                          </div>
+                          <div className="tagged-stat">
+                            <div className="stat-value">{user_item.tagged_count}</div>
+                            <div className="stat-label">Mentions</div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      <p>No tagged users yet</p>
+                    </div>
+                  )}
+                </motion.div>
+              </div>
+
+              {/* Reports Section */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.2 }}
+                className="admin-reports-section mt-8"
+              >
+                <div className="admin-section-header">
+                  <div className="section-header-with-actions">
+                    <h3 className="section-title">📋 Reported Shout-outs</h3>
+                    <div className="export-buttons">
+                      <motion.button
+                        className="export-btn csv-btn"
+                        onClick={exportReportsAsCSV}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        title="Export as CSV"
+                      >
+                        📊 Export CSV
+                      </motion.button>
+                      <motion.button
+                        className="export-btn pdf-btn"
+                        onClick={exportReportsAsPDF}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        title="Export as PDF"
+                      >
+                        📄 Export PDF
+                      </motion.button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Report Statistics */}
+                {reportStats && (
+                  <div className="report-stats-grid">
+                    <div className="stat-card">
+                      <div className="stat-number">{reportStats.total_reports}</div>
+                      <div className="stat-label">Total Reports</div>
+                    </div>
+                    <div className="stat-card pending">
+                      <div className="stat-number">{reportStats.pending_reports}</div>
+                      <div className="stat-label">Pending</div>
+                    </div>
+                    <div className="stat-card resolved">
+                      <div className="stat-number">{reportStats.resolved_reports}</div>
+                      <div className="stat-label">Resolved</div>
+                    </div>
+                    <div className="stat-card dismissed">
+                      <div className="stat-number">{reportStats.dismissed_reports}</div>
+                      <div className="stat-label">Dismissed</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Reports List */}
+                {reportedBrags && reportedBrags.length > 0 ? (
+                  <div className="reports-list">
+                    {reportedBrags.map((report) => (
+                      <motion.div
+                        key={report.id}
+                        className={`report-card ${report.status}`}
+                        whileHover={{ scale: 1.01, y: -2 }}
+                      >
+                        <div className="report-header">
+                          <div className="report-status-badge">
+                            {report.status === 'pending' ? '⏳ Pending' : report.status === 'resolved' ? '✅ Resolved' : '❌ Dismissed'}
+                          </div>
+                          <div className="report-info">
+                            <div className="report-reason">Reason: <strong>{report.reason}</strong></div>
+                            <div className="report-reporter">Reported by: <strong>{report.reported_by.name}</strong></div>
+                            <div className="report-date">
+                              {new Date(report.created_at).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </div>
+                          </div>
+                          <motion.button
+                            className="view-report-btn"
+                            onClick={() => {
+                              setSelectedReport(report);
+                              setShowReportDetail(true);
+                              setReportResolveData({ status: 'resolved', adminNotes: '' });
+                            }}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                          >
+                            View Details →
+                          </motion.button>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <p>No reports yet</p>
+                  </div>
+                )}
+              </motion.div>
+            </motion.div>
+          )}
         </div>
       </main>
+
+      {/* Report Modal */}
+      {showReportModal && (
+        <motion.div
+          className="modal-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => setShowReportModal(false)}
+        >
+          <motion.div
+            className="modal-content"
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2>Report Shout-out</h2>
+            <p className="modal-subtitle">Help us keep our community safe and respectful</p>
+
+            {reportSuccess && (
+              <motion.div 
+                className="success-message"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                style={{
+                  backgroundColor: '#d4edda',
+                  color: '#155724',
+                  padding: '12px 16px',
+                  borderRadius: '6px',
+                  marginBottom: '16px',
+                  border: '1px solid #c3e6cb',
+                  textAlign: 'center',
+                  fontWeight: '500'
+                }}
+              >
+                ✓ {reportSuccess}
+              </motion.div>
+            )}
+
+            {reportError && <div className="error-message">{reportError}</div>}
+
+            {!reportSuccess && (
+              <>
+                <div className="form-group">
+                  <label>Select Reason *</label>
+                  <select
+                    value={reportFormData.reason}
+                    onChange={(e) => setReportFormData({...reportFormData, reason: e.target.value})}
+                    className="form-select"
+                  >
+                    <option value="">-- Select a reason --</option>
+                    <option value="inappropriate">Inappropriate Content</option>
+                    <option value="harassment">Harassment or Bullying</option>
+                    <option value="spam">Spam</option>
+                    <option value="offensive">Offensive Language</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Additional Details (Optional)</label>
+                  <textarea
+                    value={reportFormData.description}
+                    onChange={(e) => setReportFormData({...reportFormData, description: e.target.value})}
+                    placeholder="Provide more context about why you're reporting this..."
+                    maxLength="500"
+                    className="form-textarea"
+                    rows="4"
+                  />
+                  <div className="char-count">{reportFormData.description.length}/500</div>
+                </div>
+
+                <div className="modal-actions">
+                  <motion.button
+                    className="submit-btn"
+                    onClick={submitReport}
+                    disabled={reportLoading}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    {reportLoading ? "Submitting..." : "Submit Report"}
+                  </motion.button>
+                  <motion.button
+                    className="cancel-btn"
+                    onClick={() => setShowReportModal(false)}
+                    disabled={reportLoading}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    Cancel
+                  </motion.button>
+                </div>
+              </>
+            )}
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* Report Detail Modal */}
+      {showReportDetail && selectedReport && (
+        <motion.div
+          className="modal-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => setShowReportDetail(false)}
+        >
+          <motion.div
+            className="modal-content large"
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2>Report Details</h2>
+            
+            <div className="report-details">
+              <div className="detail-row">
+                <label>Status:</label>
+                {selectedReport.status === 'pending' ? (
+                  <select
+                    value={reportResolveData.status}
+                    onChange={(e) => setReportResolveData({...reportResolveData, status: e.target.value})}
+                    className="form-select"
+                  >
+                    <option value="resolved">Resolved</option>
+                    <option value="dismissed">Dismissed</option>
+                  </select>
+                ) : (
+                  <span className="status-badge">{selectedReport.status}</span>
+                )}
+              </div>
+
+              <div className="detail-row">
+                <label>Reason:</label>
+                <span>{selectedReport.reason}</span>
+              </div>
+
+              <div className="detail-row">
+                <label>Reported by:</label>
+                <span>{selectedReport.reported_by.name} ({selectedReport.reported_by.email})</span>
+              </div>
+
+              <div className="detail-row">
+                <label>Description:</label>
+                <span>{selectedReport.description || 'N/A'}</span>
+              </div>
+
+              <div className="detail-row">
+                <label>Reported Shout-out:</label>
+                <div className="reported-brag-preview">
+                  <p><strong>Author:</strong> {selectedReport.brag.author.name}</p>
+                  <p><strong>Content:</strong> {selectedReport.brag.content}</p>
+                  <p><strong>Date:</strong> {new Date(selectedReport.brag.created_at).toLocaleDateString()}</p>
+                </div>
+              </div>
+
+              {selectedReport.status === 'pending' && (
+                <div className="form-group">
+                  <label>Admin Notes</label>
+                  <textarea
+                    value={reportResolveData.adminNotes}
+                    onChange={(e) => setReportResolveData({...reportResolveData, adminNotes: e.target.value})}
+                    placeholder="Add notes about your decision..."
+                    maxLength="500"
+                    className="form-textarea"
+                    rows="4"
+                  />
+                </div>
+              )}
+
+              {selectedReport.status !== 'pending' && (
+                <>
+                  <div className="detail-row">
+                    <label>Resolved by:</label>
+                    <span>{selectedReport.resolved_by?.name || 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <label>Admin Notes:</label>
+                    <span>{selectedReport.resolution_notes || 'N/A'}</span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="modal-actions">
+              {selectedReport.status === 'pending' ? (
+                <>
+                  <motion.button
+                    className="submit-btn"
+                    onClick={handleResolveReport}
+                    disabled={reportLoading}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    {reportLoading ? "Resolving..." : `Mark as ${reportResolveData.status}`}
+                  </motion.button>
+                  <motion.button
+                    className="cancel-btn"
+                    onClick={() => setShowReportDetail(false)}
+                    disabled={reportLoading}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    Back
+                  </motion.button>
+                </>
+              ) : (
+                <motion.button
+                  className="cancel-btn"
+                  onClick={() => setShowReportDetail(false)}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Close
+                </motion.button>
+              )}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   );
 }

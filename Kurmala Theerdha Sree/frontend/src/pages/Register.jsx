@@ -10,6 +10,7 @@ export default function Register() {
     email: "",
     password: "",
     department: "",
+    role: "employee",
   });
 
   const [error, setError] = useState("");
@@ -40,7 +41,7 @@ export default function Register() {
       const response = await api.post("/auth/register", form);
       console.log("Registration successful:", response.data);
       alert("Registered successfully. Please login.");
-      setForm({ name: "", email: "", password: "", department: "" });
+      setForm({ name: "", email: "", password: "", department: "", role: "employee" });
       navigate("/login");
     } catch (err) {
       const errorDetail = err.response?.data?.detail || err.message || "Registration failed";
@@ -119,6 +120,19 @@ export default function Register() {
                 onChange={handleChange}
                 className="register-input"
               />
+            </div>
+
+            <div>
+              <label className="text-white text-xs">Role</label>
+              <select
+                name="role"
+                value={form.role}
+                onChange={handleChange}
+                className="register-input"
+              >
+                <option value="employee">Employee</option>
+                <option value="admin">Admin</option>
+              </select>
             </div>
 
             <motion.button 

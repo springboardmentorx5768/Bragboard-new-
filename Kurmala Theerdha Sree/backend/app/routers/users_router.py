@@ -76,3 +76,36 @@ def get_department_activity_endpoint(
     """Get recent activity from the current user's department"""
     activity = crud.get_department_activity(db, current_user.department)
     return activity
+
+# ----------------  ADMIN DASHBOARD ROUTES ----------------
+
+@router.get("/admin/top-contributors", response_model=list)
+def get_top_contributors_endpoint(
+    current_user: models.User = Depends(get_current_user),
+    limit: int = 10,
+    db: Session = Depends(get_db)
+):
+    """Get top contributors - available to all authenticated users"""
+    # Allow all authenticated users to view statistics
+    return crud.get_top_contributors(db, limit)
+
+
+@router.get("/admin/most-tagged", response_model=list)
+def get_most_tagged_endpoint(
+    current_user: models.User = Depends(get_current_user),
+    limit: int = 10,
+    db: Session = Depends(get_db)
+):
+    """Get most tagged users - available to all authenticated users"""
+    # Allow all authenticated users to view statistics
+    return crud.get_most_tagged_users(db, limit)
+
+
+@router.get("/admin/report-stats", response_model=dict)
+def get_report_stats_endpoint(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get report statistics - available to all authenticated users"""
+    # Allow all authenticated users to view statistics
+    return crud.get_report_stats(db)

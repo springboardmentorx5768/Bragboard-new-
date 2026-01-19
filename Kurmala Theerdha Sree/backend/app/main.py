@@ -7,6 +7,7 @@ from .database import Base, engine
 from .routers.auth_router import router as auth_router
 from .routers.users_router import router as users_router
 from .routers.brag_router import router as brag_router
+from .routers.leaderboard_router import router as leaderboard_router
 
 
 # ---------------- APP SETUP ----------------
@@ -52,3 +53,4 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(brag_router)
+app.include_router(leaderboard_router)
