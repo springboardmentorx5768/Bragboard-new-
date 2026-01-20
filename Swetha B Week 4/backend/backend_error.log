@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "C:\Users\Swetha\Downloads\Swetha B Week 3\backend\app\routers\shoutouts.py", line 28, in read_shoutouts
+    query = query.outerjoin(models.ShoutOutRecipient).outerjoin(RecipientUser, models.ShoutOutRecipient.recipient_id == RecipientUser.id, isouter=True)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: Query.outerjoin() got an unexpected keyword argument 'isouter'
